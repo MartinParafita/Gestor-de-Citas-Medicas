@@ -48,7 +48,34 @@ def create_center():
                         )
     return jsonify(new_center.serialize()), 201
 
+@api.route('/centers/batch', methods=['POST'])
+def create_centers_batch():
+    centers_data = request.get_json() # 'data' es ahora una lista [{}, {}, {}]
+    
+    if not isinstance(centers_data, list):
+        return jsonify({"error": "Se esperaba una lista (array) de centros"}), 400
 
+    new_centers_list = []
+    for center_data in centers_data:
+        new_center = Center( # Creamos la instancia sin 'create' para no hacer commit cada vez
+            name=center_data.get("name"),
+            address=center_data.get("address"),
+            zip_code=center_data.get("zip_code"),
+            phone=center_data.get("phone"),
+            type_center=center_data.get("type_center")
+        )
+        db.session.add(new_center)
+        new_centers_list.append(new_center)
+
+    try:
+        db.session.commit() # Hacemos UN SOLO commit para todos los centros
+        # Devolvemos la lista de centros creados
+        serialized_centers = [center.serialize() for center in new_centers_list]
+        return jsonify(serialized_centers), 201
+        
+    except Exception as e:
+        db.session.rollback() # Revertir si algo falla
+        return jsonify({"error": str(e)}), 500
 
 @api.route('/register/doctor', methods=['POST'])
 def register_doctor():
