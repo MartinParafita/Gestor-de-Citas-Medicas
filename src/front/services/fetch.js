@@ -1,7 +1,5 @@
-const URL_BASE_API =
-  "https://datosabiertos.navarra.es/datastore/dump/f1fc5b52-be72-4088-8cb1-772076e2071c?format=json&bom=True";
-export const OWN_API =
-  "https://haunted-spooky-werewolf-69j69rw6p76hq44-3001.app.github.dev/";
+const URL_BASE_API = "https://datosabiertos.navarra.es/datastore/dump/f1fc5b52-be72-4088-8cb1-772076e2071c?format=json&bom=True";
+export const OWN_API = "https://haunted-spooky-werewolf-69j69rw6p76hq44-3001.app.github.dev/";
 
 async function register(userData) {
   //variable con el rol del usuario
@@ -12,10 +10,9 @@ async function register(userData) {
   if (role == 'paciente') {
     return registerPatient(userData)
   } else if (role == 'doctor') {
-    //return registerDoctor(userData)
-    return registerDoctor(userData)
+      return registerDoctor(userData)
   } else {
-    return { success: false, message:"Rol no valido o no definido"}
+      return { success: false, message:"Rol no valido o no definido"}
   }
   //Este codigo estaba antes aqui ->
   /*
@@ -106,6 +103,55 @@ async function registerDoctor(userData) {
     return{success: false, message: 'error de conexion'}
   }
 }
+
+async function fetchAndRegisterNavarraCenters() {
+    
+    let records;
+    try {
+        const response = await fetch(URL_BASE_API);
+        if (!response.ok) throw new Error("Error en la API de Navarra");
+        const data = await response.json(); 
+        records = data.result.records;
+    } catch (error) {
+        console.error('Error de red al traer los centros de Navarra:', error);
+        return { success: false, message: 'Error de conexión con Navarra' };
+    }
+
+    const primerosCinco = records.slice(0, 5);
+    const formattedCenters = primerosCinco.map(r => ({
+        // Mapeamos los nombres correctos de la API de Navarra
+        name: r["Nombre Centro"], // Verifiqué tu código, usas "Nombre Centro"
+        address: r["Domicilio"],
+        zip_code: r["Codigo Postal"],
+        phone: r["Telefono"].replace(/\s/g, ''),
+        type_center: r["Tipo de Centro"]
+    }));
+
+    return await registerBatch(formattedCenters);
+
+}
+
+async function registerBatch(centers) {
+    try {
+        const response = await fetch(`${OWN_API}/centers/batch`, { // Llama al nuevo endpoint
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(centers) // Envía el array completo
+        });
+
+        if (!response.ok) throw new Error("Error en el registro batch");
+
+        const data = await response.json();
+        console.log("Centros registrados exitosamente (batch):", data);
+        return { success: true, data: data };
+
+    } catch (error) {
+        console.error('Error al registrar centros en tu API:', error);
+        return { success: false, message: 'Error al guardar centros en el backend' };
+    }
+}
+
+
 //a partir de aqui no he tocado nada
 //para login digo yo que podemos hacer lo mismo.
 async function login(email, password, role) {
@@ -193,4 +239,4 @@ async function getProfile() {
   }
 }
 
-export { register, registerPatient, registerDoctor, login };
+export { register, registerPatient, registerDoctor, login, fetchAndRegisterNavarraCenters, registerBatch }
