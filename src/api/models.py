@@ -223,7 +223,7 @@ class Center(db.Model):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(255))
     zip_code: Mapped[str] = mapped_column(String(30))
-    phone: Mapped[int] = mapped_column(Integer)
+    phone: Mapped[str] = mapped_column(String)
     type_center: Mapped[str] = mapped_column(String(80))
 
     doctors: Mapped["Doctor"] = relationship(

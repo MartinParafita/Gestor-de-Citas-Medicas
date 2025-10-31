@@ -8,11 +8,14 @@ from flask_cors import CORS
 import bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime
+import requests
+
+DEFAULT_NAVARRA_URL = "https://v1itkby3i6.ufs.sh/f/0Z3x5lFQsHoMA5dMpr0oIsXfxg9jVSmyL65q4rtKROwEDU3G"
 
 api = Blueprint('api', __name__)
 
 # Allow CORS requests to this API
-CORS(api)
+CORS(api, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 @api.route('/user', methods=['GET'])
 def get_user():
@@ -29,6 +32,53 @@ def get_all_patient():
 def get_all_doctors():
     doctors = Doctor.all_doctors()
     return jsonify([doctor.serialize() for doctor in doctors]), 200
+
+@api.route('/centers', methods=['GET'])
+def get_centers():
+    centers = Center.query.all()
+    return jsonify([center.serialize() for center in centers]), 200
+
+@api.route('/centers/seed/navarra', methods=['POST'])
+
+def seed_navarra_centers():
+    import json
+    try:
+        url = request.json.get("url") if request.is_json else None
+        url = url or DEFAULT_NAVARRA_URL
+
+        r = requests.get(url, stream=True)
+        payload = json.loads(r.text[1:])
+
+        # [id,"Codigo Centro","Nombre Centro","Domicilio","Localidad","Codigo Postal","Telefono","Tipo de Centro","Dependencia"]
+        records = payload["records"]
+
+        created = []
+        for row in records:
+            name        = row[2]
+            address     = row[3]
+            zip_code    = row[5]
+            phone       = row[6]
+            type_center = row[7]
+
+            # evita duplicados por (name,address)
+            existing = Center.query.filter_by(name=name, address=address).first()
+            if existing:
+                continue
+
+            c = Center.create(
+                name=name,
+                address=address,
+                zip_code=zip_code,
+                phone=phone,
+                type_center=type_center
+            )
+            created.append(c.serialize())
+
+        return jsonify({"inserted": len(created), "items": created}), 201
+
+    except Exception as e:
+        return jsonify({"message": f"Error al seedear centros: {str(e)}"}), 500
+
 
 @api.route('/center_register', methods=['POST'])
 def create_center():
@@ -48,7 +98,14 @@ def create_center():
                         )
     return jsonify(new_center.serialize()), 201
 
+@api.route('/centers/batch', methods=['POST'])
+def create_centers_batch():
+    centers_data = request.get_json(force=True)
+    if not isinstance(centers_data, list):
+        return jsonify({"message": "Se esperaba una lista de centros"}), 400
 
+    created = [Center.create(**c).serialize() for c in centers_data]
+    return jsonify(created), 201
 
 @api.route('/register/doctor', methods=['POST'])
 def register_doctor():
