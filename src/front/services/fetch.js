@@ -1,5 +1,5 @@
 export const URL_BASE_API = "https://v1itkby3i6.ufs.sh/f/0Z3x5lFQsHoMA5dMpr0oIsXfxg9jVSmyL65q4rtKROwEDU3G";
-export const OWN_API = "https://haunted-spooky-werewolf-69j69rw6p76hq44-3001.app.github.dev/";
+export const OWN_API = "https://caverned-superstition-qr7pxpr97xh6wpp-3001.app.github.dev/";
 
 async function register(userData) {
   //variable con el rol del usuario
@@ -14,36 +14,8 @@ async function register(userData) {
   } else {
       return { success: false, message:"Rol no valido o no definido"}
   }
-  //Este codigo estaba antes aqui ->
-  /*
-  try {
-    const response = await fetch(`${OWN_API}api/register/patient`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(userData),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      // Manejo de errores
-      console.error("Error en el registro:", data.msg || data.Error);
-      alert(`Error: ${data.msg || data.Error}`);
-      return;
-    }
-
-    console.log("Registro exitoso:", data);
-    alert("¡Te has registrado con éxito! Ahora puedes iniciar sesión.");
-  } catch (error) {
-    console.error("Error de red al registrar:", error);
-    alert("Error de conexión. Inténtalo más tarde.");
-  }*/
- //aqui termina funcion register
 }
 
-//aqui nos enfocamos unicamente a mandar la info a la API
 async function registerPatient(userData) {
   try {
     const response = await fetch (`${OWN_API}api/register/patient`, {
@@ -53,7 +25,6 @@ async function registerPatient(userData) {
       },
       body: JSON.stringify(userData)
     });
-    
 
     const data = await response.json();
 
@@ -105,28 +76,25 @@ async function registerDoctor(userData) {
 }
 
 async function fetchAndRegisterNavarraCenters() {
-    
-    // Esta función ya NO llama a la API de Navarra.
-    // Ahora, llama a NUESTRO PROPIO backend para que él haga el trabajo.
-    try {
-        // 1. Llamamos al nuevo endpoint que crearemos en routes.py
+      try {
+        // 1. Llamamos al endpoint que crearemos en routes.py
         const response = await fetch(`${OWN_API}api/centers/seed/navarra`, { 
-            method: 'POST', // Usamos POST porque inicia una acción (escribir en la BBDD)
+            method: 'POST',
             headers: { 
                 'Content-Type': 'application/json' 
             },
-            // No necesitamos body, solo estamos "despertando" el endpoint
+            body: '{}'
         });
 
         // 2. Procesamos la respuesta de NUESTRO backend
         const data = await response.json();
         
         if (!response.ok) {
-            // Si el backend falló (ej: no pudo conectar con Navarra, o no pudo guardar)
+            // Si el backend falló
             throw new Error(data.message || "Error en el backend al cargar centros");
         }
 
-        // Si el backend tuvo éxito (ya sea cargando o reportando que ya estaban cargados)
+        // Si el backend tuvo éxito
         console.log("Respuesta del backend (seed):", data.message);
         return { success: true, message: data.message };
 
@@ -137,32 +105,30 @@ async function fetchAndRegisterNavarraCenters() {
     }
 }
 
-async function registerBatch(centers) {
-    try {
-        const response = await fetch(`${OWN_API}/centers/batch`, { // Llama al nuevo endpoint
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(centers) // Envía el array completo
-        });
+async function login(email, password, role) {
 
-        if (!response.ok) throw new Error("Error en el registro batch");
+  // Aseguramos que el rol esté definido y en minúsculas
+  const normalizedRole = role ? role.toLowerCase() : undefined;
 
-        const data = await response.json();
-        console.log("Centros registrados exitosamente (batch):", data);
-        return { success: true, data: data };
-
-    } catch (error) {
-        console.error('Error al registrar centros en tu API:', error);
-        return { success: false, message: 'Error al guardar centros en el backend' };
-    }
+  // Lógica de delegación
+  if (normalizedRole === "patient" || normalizedRole === "paciente") {
+    // Usamos 'patient' para la ruta del backend
+    return loginPatient(email, password, "patient");
+  } else if (normalizedRole === "doctor") {
+    return loginDoctor(email, password, "doctor");
+  } else {
+    // Si el rol es 'undefined' o no válido
+    console.error("Rol de login no válido o no definido:", role);
+    alert("Error: El rol (paciente o doctor) no está definido.");
+    return { success: false, message: "Rol de usuario no válido." };
+  }
 }
 
 
-//a partir de aqui no he tocado nada
-//para login digo yo que podemos hacer lo mismo.
-async function login(email, password, role) {
-  // Determinamos la URL correcta según el rol
-  const loginUrl = `${OWN_API}/login/${role}`;
+//Maneja el fetch de login para Pacientes
+
+async function loginPatient(email, password, role) {
+  const loginUrl = `${OWN_API}api/login/patient`;
 
   try {
     const response = await fetch(loginUrl, {
@@ -170,35 +136,63 @@ async function login(email, password, role) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        email: email,
-        password: password,
-      }),
+      body: JSON.stringify({ email, password }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      // Manejo de errores
-      console.error("Error de login:", data.msg);
-      alert(`Error: ${data.msg}`);
-      return;
+      console.error("Error de login (Paciente):", data.msg);
+      alert(`Error (Paciente): ${data.msg || "Credenciales incorrectas"}`);
+      return { success: false, message: data.msg };
     }
 
-    // Guardamos el token y el rol en localStorage
     localStorage.setItem("jwt_token", data.token);
     localStorage.setItem("user_role", role);
 
-    console.log("Login exitoso. Token guardado.");
+    console.log("Login de paciente exitoso.");
 
-    // Ahora que tenemos el token, pedimos los datos protegidos
-    await getProfile();
+    await getProfile(); // Llamamos a getProfile después del login
+    return { success: true, message: "Login exitoso" };
   } catch (error) {
-    console.error("Error de red al iniciar sesión:", error);
+    console.error("Error de red al iniciar sesión (Paciente):", error);
     alert("Error de conexión. Inténtalo más tarde.");
+    return { success: false, message: "Error de conexión." };
   }
 }
+// Maneja el fetch de login para Doctores
 
+async function loginDoctor(email, password, role) {
+  const loginUrl = `${OWN_API}api/login/doctor`;
+
+  try {
+    const response = await fetch(loginUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Error de login (Doctor):", data.msg);
+      alert(`Error (Doctor): ${data.msg || "Credenciales incorrectas"}`);
+      return { success: false, message: data.msg };
+    }
+
+    localStorage.setItem("jwt_token", data.token);
+    localStorage.setItem("user_role", role);
+    console.log("Login de doctor exitoso.");
+
+    await getProfile(); // Llamamos a getProfile después del login
+    return { success: true, message: "Login exitoso" };
+    
+    } catch (error) {
+    console.error("Error de red al iniciar sesión (Doctor):", error);
+    return { success: false, message: "Error de conexión." };
+      }
+  }
 // Obtener perfil (ruta protegida)
 
 async function getProfile() {
@@ -208,12 +202,10 @@ async function getProfile() {
 
   if (!token || !role) {
     console.log("No se encontró token o rol. Debes iniciar sesión.");
-
     return;
   }
-
   // 2. Determinamos la URL protegida correcta
-  const protectedUrl = `${OWN_API}/protected/${role}`;
+  const protectedUrl = `${OWN_API}api/protected/${role}`;
 
   try {
     const response = await fetch(protectedUrl, {
@@ -245,4 +237,4 @@ async function getProfile() {
   }
 }
 
-export { register, registerPatient, registerDoctor, login, fetchAndRegisterNavarraCenters, registerBatch }
+export { register, registerPatient, registerDoctor, login, fetchAndRegisterNavarraCenters }

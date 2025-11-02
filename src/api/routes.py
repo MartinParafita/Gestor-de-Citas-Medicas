@@ -1,21 +1,20 @@
 """
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
+from flask_cors import CORS
 from flask import Flask, request, jsonify, url_for, Blueprint
 from api.models import db, User, Patient, Doctor, Appointment, Center
 from api.utils import generate_sitemap, APIException
-from flask_cors import CORS
 import bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime
 import requests
 
+# API EXTERNA
 DEFAULT_NAVARRA_URL = "https://v1itkby3i6.ufs.sh/f/0Z3x5lFQsHoMA5dMpr0oIsXfxg9jVSmyL65q4rtKROwEDU3G"
 
 api = Blueprint('api', __name__)
-
-# Allow CORS requests to this API
-CORS(api, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+CORS(api)
 
 @api.route('/user', methods=['GET'])
 def get_user():
@@ -28,10 +27,12 @@ def get_all_patient():
     patients = Patient.all_patients()
     return jsonify([patient.serialize() for patient in patients]), 200
 
-@api.route('/doctors', methods=['GET'])
-def get_all_doctors():
-    doctors = Doctor.all_doctors()
-    return jsonify([doctor.serialize() for doctor in doctors]), 200
+
+#############################################################################
+#                           ROUTES OF CENTER                                #
+#############################################################################
+
+
 
 @api.route('/centers', methods=['GET'])
 def get_centers():
@@ -39,7 +40,6 @@ def get_centers():
     return jsonify([center.serialize() for center in centers]), 200
 
 @api.route('/centers/seed/navarra', methods=['POST'])
-
 def seed_navarra_centers():
     import json
     try:
@@ -51,9 +51,11 @@ def seed_navarra_centers():
 
         # [id,"Codigo Centro","Nombre Centro","Domicilio","Localidad","Codigo Postal","Telefono","Tipo de Centro","Dependencia"]
         records = payload["records"]
+        print(records)
+        primeros_cinco = records[:5]
 
         created = []
-        for row in records:
+        for row in primeros_cinco:
             name        = row[2]
             address     = row[3]
             zip_code    = row[5]
@@ -98,64 +100,14 @@ def create_center():
                         )
     return jsonify(new_center.serialize()), 201
 
-@api.route('/centers/batch', methods=['POST'])
-def create_centers_batch():
-    centers_data = request.get_json(force=True)
-    if not isinstance(centers_data, list):
-        return jsonify({"message": "Se esperaba una lista de centros"}), 400
+#############################################################################
+#                           ROUTES OF DOCTOR                                #
+#############################################################################
 
-    created = [Center.create(**c).serialize() for c in centers_data]
-    return jsonify(created), 201
-
-@api.route('/register/doctor', methods=['POST'])
-def register_doctor():
-    data = request.get_json()
-    email = data.get("email")
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
-    password = data.get("password")
-
-    #lo pide el front pero nosotros no lo usamos
-    #license_number = data.get("license_number")
-    #phone_number = data.get("phone_number")
-
-    # Campos con valores falsos
-    specialty_falso = "General"
-    center_id_falso = None
-    work_days_falso = 0
-
-    if not email or not password or not first_name or not last_name:
-        response = jsonify({"msg": "email, password, nombre y apellido son requeridos."})
-        #solucion cors temporal
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
-
-    if Doctor.query.filter_by(email=email).first():
-        response = jsonify({"msg": "This user already exists."})
-        #solucion cors temporal
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
-
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(
-        password=password.encode("utf-8"), salt=salt)
-
-    # Crear el nuevo doctor con valores falsos para los campos faltantes
-    new_doctor = Doctor.create(email=email,
-                    first_name=first_name,
-                    last_name=last_name,
-                    specialty=specialty_falso,
-                    center_id=center_id_falso,
-                    password=hashed_password.decode("utf-8"),
-                    work_days=work_days_falso,
-                    )
-    
-    response = jsonify(new_doctor.serialize())
-    #solucion temporal CORS
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    
-    return response, 201
-
+@api.route('/doctors', methods=['GET'])
+def get_all_doctors():
+    doctors = Doctor.all_doctors()
+    return jsonify([doctor.serialize() for doctor in doctors]), 200
 
 @api.route("/login/doctor", methods=["POST"])
 def create_token_doctor():
@@ -171,6 +123,46 @@ def create_token_doctor():
      
     access_token = create_access_token(identity=str(user.id))
     return jsonify({"token": access_token, "user_id": user.id})
+
+
+@api.route('/register/doctor', methods=['POST'])
+def register_doctor():
+    data = request.get_json()
+    email = data.get("email")
+    first_name = data.get("first_name")
+    last_name = data.get("last_name")
+    password = data.get("password")
+
+    specialty = data.get("specialty")
+    center_id = data.get("center_id")
+    work_days = data.get("work_days")
+
+    if not email or not password or not first_name or not last_name:
+        response = jsonify({"msg": "email, password, nombre y apellido son requeridos."})
+        return response, 400
+
+    if Doctor.query.filter_by(email=email).first():
+        response = jsonify({"msg": "This user already exists."})
+        return response, 400
+
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(
+        password=password.encode("utf-8"), salt=salt)
+
+    # Crear el nuevo doctor con valores falsos para los campos faltantes
+    new_doctor = Doctor.create(email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    specialty=specialty,
+                    center_id=center_id,
+                    password=hashed_password.decode("utf-8"),
+                    work_days=work_days,
+                    )
+    
+    response = jsonify(new_doctor.serialize())
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response, 201
+
 
 @api.route('/doctor/<int:doctor_id>', methods=['PUT'])
 def update_doctor_details(doctor_id):
@@ -204,6 +196,23 @@ def update_doctor_details(doctor_id):
     # Devolvemos el doctor actualizado
     return jsonify(doctor_to_update.serialize()), 200
 
+@api.route('/dashboardDoctor', methods=['GET'])
+
+@api.route("/protected/doctor", methods=["GET"])
+@jwt_required()
+def protected_doctor():
+    # Access the identity of the current user with get_jwt_identity
+    current_user_id = int(get_jwt_identity())
+    print(current_user_id)
+    user = Doctor.query.get(current_user_id)
+    return jsonify (user.serialize()), 200
+
+
+#############################################################################
+#                           ROUTES OF PATIENT                               #
+#############################################################################
+
+
 @api.route('/register/patient', methods=['POST'])
 def register_patient():
     data = request.get_json()
@@ -213,17 +222,12 @@ def register_patient():
     birth_date = data.get("birth_date")
     password = data.get("password")
 
-    #Modelos no tiene phone number pero lo pide el front
-    #phone_number = data.get("phone_number")
-
     if not email or not password or not first_name or not last_name or not birth_date:
         response = jsonify({"msg": "Todos los campos principales (email, password, nombre, apellido, fecha) son requeridos."})
-        response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 400
 
     if Patient.query.filter_by(email=email).first():
         response = jsonify({"msg": "This user already exists."})
-        response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 400
     
     salt = bcrypt.gensalt()
@@ -245,6 +249,22 @@ def register_patient():
     response.headers.add("Access-Control-Allow-Origin", "*")
     
     return response, 201
+
+
+@api.route("/login/patient", methods=["POST"])
+def create_token_patient():
+    data = request.json
+    username = data["email"]
+    password = data["password"]
+
+    user = Patient.query.filter_by(email=username).first()
+
+    if not user or not bcrypt.checkpw(password.encode("utf-8"),user.password.encode("utf-8")):
+        return jsonify({"msg": "Bad username or password"}), 401
+     
+    access_token = create_access_token(identity=str(user.id))
+    return jsonify({"token": access_token, "user_id": user.id})
+
 
 @api.route('/patient/<int:patient_id>', methods=['PUT'])
 def update_patient_details(patient_id):
@@ -288,38 +308,22 @@ def set_inactive(patient_id):
     serialized_patient = patient_set_inactive.serialize()
     return serialized_patient
 
-@api.route("/login/patient", methods=["POST"])
-def create_token_patient():
-    data = request.json
-    username = data["email"]
-    password = data["password"]
-
-    user = Patient.query.filter_by(email=username).first()
-
-    if not user or not bcrypt.checkpw(password.encode("utf-8"),user.password.encode("utf-8")):
-        return jsonify({"msg": "Bad username or password"}), 401
-     
-    access_token = create_access_token(identity=str(user.id))
-    return jsonify({"token": access_token, "user_id": user.id})
-
-
 @api.route("/protected/patient", methods=["GET"])
 @jwt_required()
 def protected_patient():
-    # Access the identity of the current user with get_jwt_identity
     current_user_id = int(get_jwt_identity())
-    user = Patient.query.get(current_user_id)
-    return jsonify (user.serialize()), 200
+    patient = Patient.query.get(current_user_id)
+    return jsonify (patient.serialize()), 200
 
+@api.route('PatientDashboard/<int:patient_id>', methods=['GET'])
+def dashboard_patient(patient_id):
+    dash_patient = Patient.query.get(patient_id)
+    if not dash_patient:
+        return jsonify({"error": "Paciente no encontrado"}), 404
 
-@api.route("/protected/doctor", methods=["GET"])
-@jwt_required()
-def protected_doctor():
-    # Access the identity of the current user with get_jwt_identity
-    current_user_id = int(get_jwt_identity())
-    print(current_user_id)
-    user = Doctor.query.get(current_user_id)
-    return jsonify (user.serialize()), 200
+#############################################################################
+#                           ROUTES OF APPOINTMENTS                          #
+#############################################################################
 
 @api.route('/appointment', methods=['POST'])
 def create_appointment():
