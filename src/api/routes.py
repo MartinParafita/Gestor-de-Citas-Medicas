@@ -120,7 +120,6 @@ def create_token_doctor():
     password = data["password"]
 
     user = Doctor.query.filter_by(email=username).first()
-    print(user.id)
 
     if not user or not bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
         return jsonify({"msg": "Bad username or password"}), 401
@@ -455,38 +454,29 @@ def create_appointment():
 @api.route('/appointment/<int:appointment_id>', methods=['PUT'])
 def update_appointment(appointment_id):
 
-    # Buscamos la cita
     update_appointment = Appointment.query.get(appointment_id)
     if not update_appointment:
         return jsonify({"error": "Cita no encontrada"}), 404
     data = request.get_json()
-    appointment_date = data.get('appointment_date')
-
+    
     updates_to_make = {}
 
-    to_date = datetime.strptime(appointment_date, "%d-%m-%Y %H:%M")
-    if 'appointment_date' in data:
-        updates_to_make['appointment_date'] = to_date
+    # 1. Manejo de appointment_date (Solo si está presente)
+    appointment_date = data.get('appointment_date')
+    if appointment_date:
+        try:
+            to_date = datetime.strptime(appointment_date, "%d-%m-%Y %H:%M")
+            updates_to_make['appointment_date'] = to_date
+        except ValueError:
+            return jsonify({"msg": "Formato de fecha inválido. Se espera DD-MM-YYYY HH:MM"}), 400
 
+    # 2. Manejo del campo status (¡Añadido!)
     if 'status' in data:
         updates_to_make['status'] = data.get('status')
 
-    # Actualizamos la cita
-    update_appointment.update(**updates_to_make)
-
-    # Devolvemos la cita actualizada
-    return jsonify(update_appointment.serialize()), 200
-
-
-@api.route('/appointment/<int:appointment_id>/cancel', methods=['PUT'])
-def cancel_appointment(appointment_id):
-
-    # Buscamos al paciente y verificamos que existe
-    cancelled_appointment = Appointment.query.get(appointment_id)
-    if not cancelled_appointment:
-        return jsonify({"error": "Cita no encontrada"}), 404
-
-    # Cambiamos su estado a inactivo
-    cancelled_appointment.cancel()
-    serialized_appointment = cancelled_appointment.serialize()
-    return serialized_appointment
+    # 3. Actualizamos la cita
+    if updates_to_make:
+        update_appointment.update(**updates_to_make)
+        return jsonify(update_appointment.serialize()), 200
+    
+    return jsonify({"msg": "No se proporcionaron campos para actualizar"}), 400

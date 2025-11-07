@@ -11,7 +11,7 @@ export const URL_BASE_API =
 
 // URL del propio backend 
 export const OWN_API =
-  "https://organic-disco-j6jqgq64jv3pjjr-3001.app.github.dev/";
+  "https://ideal-space-carnival-r4w9wj5r99463rr7-3001.app.github.dev/";
 
 // =================================================================
 //                  🔐 HELPER PARA AUTENTICACIÓN
@@ -422,6 +422,23 @@ export const cancelAppointment = async (appointmentId) => {
   }
 };
 
+export const updateAppointmentStatus = async (appointmentId, newStatus) => {
+    try {
+        const token = getAuthToken();
+        const response = await fetch(`${OWN_API}api/appointment/${appointmentId}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status: newStatus }), // <-- Solo enviamos el estado
+        });
+        // ... (manejo de respuesta)
+        return { success: response.ok, data: await response.json() };
+    } catch (error) {
+        return { success: false, message: "Error de conexión." };
+    }
+};
 // =================================================================
 //              👨‍⚕️ FUNCIONES ESPECÍFICAS DEL DOCTOR
 // =================================================================
