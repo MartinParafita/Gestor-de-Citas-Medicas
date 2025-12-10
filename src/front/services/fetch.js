@@ -6,7 +6,7 @@ export const URL_BASE_API =
 
 // URL del propio backend 
 export const OWN_API =
-  "https://ideal-space-carnival-r4w9wj5r99463rr7-3001.app.github.dev/";
+  "https://friendly-palm-tree-5p9q5p7px69f7wjv-3001.app.github.dev/";
 
 
 //HELPER PARA AUTENTICACIÓN
