@@ -1,325 +1,279 @@
-"""
-This module takes care of starting the API Server, Loading the DB and Adding the endpoints
-"""
-from flask import Flask, request, jsonify, url_for, Blueprint
-from api.models import db, User, Patient, Doctor, Appointment, Center
-from api.utils import generate_sitemap, APIException
+from flask import request, jsonify, Blueprint
+from api.models import db, Patient, Doctor, Appointment, Center
+from api.utils import APIException
 from flask_cors import CORS
 import bcrypt
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime
 
 api = Blueprint('api', __name__)
-
-# Allow CORS requests to this API
 CORS(api)
 
-@api.route('/user', methods=['GET'])
-def get_user():
-    data = request.get_json()
-    user = User.query.get()
-    return jsonify ({"id": user.id, "email": user.email}), 200
+
+# ── Pacientes ────────────────────────────────────────────────────────────────
 
 @api.route('/patients', methods=['GET'])
-def get_all_patient():
+def get_all_patients():
     patients = Patient.all_patients()
-    return jsonify([patient.serialize() for patient in patients]), 200
+    return jsonify([p.serialize() for p in patients]), 200
 
-@api.route('/doctors', methods=['GET'])
-def get_all_doctors():
-    doctors = Doctor.all_doctors()
-    return jsonify([doctor.serialize() for doctor in doctors]), 200
-
-@api.route('/center_register', methods=['POST'])
-def create_center():
-    data = request.get_json()
-    name = data.get("name")
-    address = data.get("address")
-    zip_code = data.get("zip_code")
-    phone = data.get("phone")
-    type_center = data.get("type_center")
-
-    new_center = Center.create(
-                        name=name,
-                        address=address,
-                        zip_code=zip_code,
-                        phone=phone,
-                        type_center=type_center
-                        )
-    return jsonify(new_center.serialize()), 201
-
-
-
-@api.route('/register/doctor', methods=['POST'])
-def register_doctor():
-    data = request.get_json()
-    email = data.get("email")
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
-    password = data.get("password")
-
-    #lo pide el front pero nosotros no lo usamos
-    #license_number = data.get("license_number")
-    #phone_number = data.get("phone_number")
-
-    # Campos con valores falsos
-    specialty_falso = "General"
-    center_id_falso = None
-    work_days_falso = 0
-
-    if not email or not password or not first_name or not last_name:
-        response = jsonify({"msg": "email, password, nombre y apellido son requeridos."})
-        #solucion cors temporal
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
-
-    if Doctor.query.filter_by(email=email).first():
-        response = jsonify({"msg": "This user already exists."})
-        #solucion cors temporal
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
-
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(
-        password=password.encode("utf-8"), salt=salt)
-
-    # Crear el nuevo doctor con valores falsos para los campos faltantes
-    new_doctor = Doctor.create(email=email,
-                    first_name=first_name,
-                    last_name=last_name,
-                    specialty=specialty_falso,
-                    center_id=center_id_falso,
-                    password=hashed_password.decode("utf-8"),
-                    work_days=work_days_falso,
-                    )
-    
-    response = jsonify(new_doctor.serialize())
-    #solucion temporal CORS
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    
-    return response, 201
-
-
-@api.route("/login/doctor", methods=["POST"])
-def create_token_doctor():
-    data = request.json
-    username = data["email"]
-    password = data["password"]
-
-    user = Doctor.query.filter_by(email=username).first()
-    print(user.id)
-    
-    if not user or not bcrypt.checkpw(password.encode("utf-8"),user.password.encode("utf-8")):
-        return jsonify({"msg": "Bad username or password"}), 401
-     
-    access_token = create_access_token(identity=str(user.id))
-    return jsonify({"token": access_token, "user_id": user.id})
-
-@api.route('/doctor/<int:doctor_id>', methods=['PUT'])
-def update_doctor_details(doctor_id):
-
-    # Buscamos al doctor
-    doctor_to_update = Doctor.query.get(doctor_id)
-    # Buscamos al doctor y verificamos que exista
-    if not doctor_to_update:
-        return jsonify({"error": "Paciente no encontrado"}), 404
-    data = request.get_json()
-
-    updates_to_make = {}
-
-    # Si cambia la contraseña la hasheamos
-    hashed_password = None
-    if 'password' in data:
-        salt = bcrypt.gensalt()
-        hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), salt=salt)
-        updates_to_make['password'] = hashed_password
-    # Chequeamos si cambio el mail
-    if 'email' in data:
-        updates_to_make['email'] = data['email']
-    # Chequeamos si cambio el doctor
-    if 'work_days' in data:
-        updates_to_make['work_days'] = data['work_days']
-    if 'center_id' in data:
-        updates_to_make['center_id'] = data['center_id']
-
-    # Actualizamos el doctor
-    doctor_to_update.update(**updates_to_make)
-    # Devolvemos el doctor actualizado
-    return jsonify(doctor_to_update.serialize()), 200
 
 @api.route('/register/patient', methods=['POST'])
 def register_patient():
     data = request.get_json()
-    email = data.get("email")
+    email      = data.get("email")
     first_name = data.get("first_name")
-    last_name = data.get("last_name")
+    last_name  = data.get("last_name")
     birth_date = data.get("birth_date")
-    password = data.get("password")
-
-    #Modelos no tiene phone number pero lo pide el front
-    #phone_number = data.get("phone_number")
+    password   = data.get("password")
 
     if not email or not password or not first_name or not last_name or not birth_date:
-        response = jsonify({"msg": "Todos los campos principales (email, password, nombre, apellido, fecha) son requeridos."})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
+        return jsonify({"msg": "Todos los campos son requeridos."}), 400
 
     if Patient.query.filter_by(email=email).first():
-        response = jsonify({"msg": "This user already exists."})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 400
-    
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(
-        password=password.encode("utf-8"), salt=salt)
+        return jsonify({"msg": "Este usuario ya existe."}), 400
 
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     new_patient = Patient.create(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            birth_date=birth_date,
-            #phone_number=phone_number,
-            password=hashed_password.decode("utf-8"),
-            assign_doctor=data.get("assign_doctor", None)
-            )
-    response = jsonify(new_patient.serialize())
-
-    #Solucion temporal CORS
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    
-    return response, 201
-
-@api.route('/patient/<int:patient_id>', methods=['PUT'])
-def update_patient_details(patient_id):
-
-    # Buscamos al paciente
-    patient_to_update = Patient.query.get(patient_id)
-    if not patient_to_update:
-        return jsonify({"error": "Paciente no encontrado"}), 404
-    data = request.get_json()
-
-    # Creamos un diccionario con los cambios
-    updates_to_make = {}
-
-    # Si cambia la contraseña la hasheamos
-    hashed_password = None
-    if 'password' in data:
-        salt = bcrypt.gensalt()
-        hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), salt=salt)
-        updates_to_make['password'] = hashed_password
-    # Chequeamos si cambio el correo
-    if 'email' in data:
-        updates_to_make['email'] = data['email']
-    # Chequeamos si cambio el doctor
-    if 'assign_doctor' in data:
-        updates_to_make['assign_doctor'] = data['assign_doctor']
-
-    # Actualizamos el paciente
-    patient_to_update.update(**updates_to_make)
-    # Devolvemos el paciente actualizado
-    return jsonify(patient_to_update.serialize()), 200
-
-@api.route(('/patient/<int:patient_id>/inactive_patient'), methods=['PUT'])
-def set_inactive(patient_id):
-
-    # Buscamos al paciente y verificamos que existe
-    patient_set_inactive = Patient.query.get(patient_id)
-    if not patient_set_inactive:
-        return jsonify({"error": "Paciente no encontrado"}), 404
-    # Cambiamos su estado a inactivo
-    patient_set_inactive.soft_delete()
-    serialized_patient = patient_set_inactive.serialize()
-    return serialized_patient
-
-@api.route("/login/patient", methods=["POST"])
-def create_token_patient():
-    data = request.json
-    username = data["email"]
-    password = data["password"]
-
-    user = Patient.query.filter_by(email=username).first()
-
-    if not user or not bcrypt.checkpw(password.encode("utf-8"),user.password.encode("utf-8")):
-        return jsonify({"msg": "Bad username or password"}), 401
-     
-    access_token = create_access_token(identity=str(user.id))
-    return jsonify({"token": access_token, "user_id": user.id})
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        birth_date=birth_date,
+        password=hashed,
+        assign_doctor=data.get("assign_doctor", None)
+    )
+    return jsonify(new_patient.serialize()), 201
 
 
-@api.route("/protected/patient", methods=["GET"])
+@api.route('/login/patient', methods=['POST'])
+def login_patient():
+    data     = request.get_json()
+    email    = data.get("email")
+    password = data.get("password")
+
+    user = Patient.query.filter_by(email=email).first()
+    if not user or not bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
+        return jsonify({"msg": "Credenciales incorrectas"}), 401
+
+    token = create_access_token(identity=str(user.id))
+    return jsonify({"token": token, "user_id": user.id, "role": "paciente"}), 200
+
+
+@api.route('/protected/patient', methods=['GET'])
 @jwt_required()
 def protected_patient():
-    # Access the identity of the current user with get_jwt_identity
-    current_user_id = int(get_jwt_identity())
-    user = Patient.query.get(current_user_id)
-    return jsonify (user.serialize()), 200
+    user_id = int(get_jwt_identity())
+    user = Patient.query.get(user_id)
+    if not user:
+        return jsonify({"msg": "Paciente no encontrado"}), 404
+    return jsonify(user.serialize()), 200
 
 
-@api.route("/protected/doctor", methods=["GET"])
+@api.route('/patient/<int:patient_id>', methods=['PUT'])
+def update_patient(patient_id):
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado"}), 404
+
+    data = request.get_json()
+    updates = {}
+
+    if 'password' in data:
+        updates['password'] = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    if 'email' in data:
+        updates['email'] = data['email']
+    if 'assign_doctor' in data:
+        updates['assign_doctor'] = data['assign_doctor']
+
+    patient.update(**updates)
+    return jsonify(patient.serialize()), 200
+
+
+@api.route('/patient/<int:patient_id>/inactive_patient', methods=['PUT'])
+def set_inactive(patient_id):
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado"}), 404
+    patient.soft_delete()
+    return jsonify(patient.serialize()), 200
+
+
+# ── Médicos ───────────────────────────────────────────────────────────────────
+
+@api.route('/doctors', methods=['GET'])
+def get_all_doctors():
+    doctors = Doctor.all_doctors()
+    return jsonify([d.serialize() for d in doctors]), 200
+
+
+@api.route('/doctors/<int:doctor_id>', methods=['GET'])
+def get_doctor(doctor_id):
+    doctor = Doctor.query.get(doctor_id)
+    if not doctor:
+        return jsonify({"error": "Médico no encontrado"}), 404
+    return jsonify(doctor.serialize()), 200
+
+
+@api.route('/register/doctor', methods=['POST'])
+def register_doctor():
+    data       = request.get_json()
+    email      = data.get("email")
+    first_name = data.get("first_name")
+    last_name  = data.get("last_name")
+    password   = data.get("password")
+    specialty  = data.get("specialty", "General")
+    work_days  = data.get("work_days", 5)
+    center_id  = data.get("center_id", None)
+
+    if not email or not password or not first_name or not last_name:
+        return jsonify({"msg": "email, password, nombre y apellido son requeridos."}), 400
+
+    if Doctor.query.filter_by(email=email).first():
+        return jsonify({"msg": "Este usuario ya existe."}), 400
+
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    new_doctor = Doctor.create(
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        specialty=specialty,
+        center_id=center_id,
+        work_days=work_days,
+        password=hashed,
+    )
+    return jsonify(new_doctor.serialize()), 201
+
+
+@api.route('/login/doctor', methods=['POST'])
+def login_doctor():
+    data     = request.get_json()
+    email    = data.get("email")
+    password = data.get("password")
+
+    user = Doctor.query.filter_by(email=email).first()
+    if not user or not bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
+        return jsonify({"msg": "Credenciales incorrectas"}), 401
+
+    token = create_access_token(identity=str(user.id))
+    return jsonify({"token": token, "user_id": user.id, "role": "doctor"}), 200
+
+
+@api.route('/protected/doctor', methods=['GET'])
 @jwt_required()
 def protected_doctor():
-    # Access the identity of the current user with get_jwt_identity
-    current_user_id = int(get_jwt_identity())
-    print(current_user_id)
-    user = Doctor.query.get(current_user_id)
-    return jsonify (user.serialize()), 200
+    user_id = int(get_jwt_identity())
+    user = Doctor.query.get(user_id)
+    if not user:
+        return jsonify({"msg": "Médico no encontrado"}), 404
+    return jsonify(user.serialize()), 200
+
+
+@api.route('/doctor/<int:doctor_id>', methods=['PUT'])
+def update_doctor(doctor_id):
+    doctor = Doctor.query.get(doctor_id)
+    if not doctor:
+        return jsonify({"error": "Médico no encontrado"}), 404
+
+    data = request.get_json()
+    updates = {}
+
+    if 'password' in data:
+        updates['password'] = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    if 'email' in data:
+        updates['email'] = data['email']
+    if 'work_days' in data:
+        updates['work_days'] = data['work_days']
+    if 'center_id' in data:
+        updates['center_id'] = data['center_id']
+
+    doctor.update(**updates)
+    return jsonify(doctor.serialize()), 200
+
+
+# ── Citas ─────────────────────────────────────────────────────────────────────
+
+@api.route('/appointments/patient', methods=['GET'])
+@jwt_required()
+def get_patient_appointments():
+    patient_id = int(get_jwt_identity())
+    appointments = Appointment.query.filter_by(patient_id=patient_id).all()
+    return jsonify([a.serialize() for a in appointments]), 200
+
+
+@api.route('/appointments/doctor', methods=['GET'])
+@jwt_required()
+def get_doctor_appointments():
+    doctor_id = int(get_jwt_identity())
+    appointments = Appointment.query.filter_by(doctor_id=doctor_id).all()
+    return jsonify([a.serialize() for a in appointments]), 200
+
 
 @api.route('/appointment', methods=['POST'])
+@jwt_required()
 def create_appointment():
-    data = request.get_json()
-    doctor_id = data.get("doctor_id")
-    patient_id = data.get("patient_id")
-    center_id = data.get("center_id")
+    data             = request.get_json()
+    doctor_id        = data.get("doctor_id")
+    center_id        = data.get("center_id")
     appointment_date = data.get("appointment_date")
+    patient_id       = int(get_jwt_identity())
 
-    # Validamos que doctor y appointment no esten vacios
     if not doctor_id or not appointment_date:
-            return jsonify({"msg": "doctor_id y appointment_date son requeridos para pedir cita"}), 400
-    # Pasamos el String del JSON a formato Date
+        return jsonify({"msg": "doctor_id y appointment_date son requeridos"}), 400
+
     appointment_dt = datetime.strptime(appointment_date, "%d-%m-%Y %H:%M")
 
     new_appointment = Appointment.create(
-            doctor_id=doctor_id,
-            patient_id=patient_id,
-            center_id=center_id,
-            appointment_date=appointment_dt,
-            )
+        doctor_id=doctor_id,
+        patient_id=patient_id,
+        center_id=center_id,
+        appointment_date=appointment_dt,
+    )
     return jsonify(new_appointment.serialize()), 201
+
 
 @api.route('/appointment/<int:appointment_id>', methods=['PUT'])
 def update_appointment(appointment_id):
-
-    # Buscamos la cita
-    update_appointment = Appointment.query.get(appointment_id)
-    if not update_appointment:
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
         return jsonify({"error": "Cita no encontrada"}), 404
+
     data = request.get_json()
-    appointment_date = data.get('appointment_date')
+    updates = {}
 
-    updates_to_make = {}
-
-    to_date = datetime.strptime(appointment_date, "%d-%m-%Y %H:%M")
     if 'appointment_date' in data:
-        updates_to_make['appointment_date'] = to_date
-    
+        updates['appointment_date'] = datetime.strptime(data['appointment_date'], "%d-%m-%Y %H:%M")
     if 'status' in data:
-        updates_to_make['status'] = data.get('status')
-    
-    # Actualizamos la cita
-    update_appointment.update(**updates_to_make)
-    
-    # Devolvemos la cita actualizada
-    return jsonify(update_appointment.serialize()), 200
+        updates['status'] = data['status']
+
+    appt.update(**updates)
+    return jsonify(appt.serialize()), 200
+
 
 @api.route('/appointment/<int:appointment_id>/cancel', methods=['PUT'])
 def cancel_appointment(appointment_id):
-
-     # Buscamos al paciente y verificamos que existe
-    cancelled_appointment = Appointment.query.get(appointment_id)
-    if not cancelled_appointment:
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
         return jsonify({"error": "Cita no encontrada"}), 404
-    
-    # Cambiamos su estado a inactivo
-    cancelled_appointment.cancel()
-    serialized_appointment = cancelled_appointment.serialize()
-    return serialized_appointment
+    appt.cancel()
+    return jsonify(appt.serialize()), 200
+
+
+# ── Centros ───────────────────────────────────────────────────────────────────
+
+@api.route('/centers', methods=['GET'])
+def get_all_centers():
+    centers = Center.query.all()
+    return jsonify([c.serialize() for c in centers]), 200
+
+
+@api.route('/center_register', methods=['POST'])
+def create_center():
+    data = request.get_json()
+    new_center = Center.create(
+        name=data.get("name"),
+        address=data.get("address"),
+        zip_code=data.get("zip_code"),
+        phone=data.get("phone"),
+        type_center=data.get("type_center"),
+    )
+    return jsonify(new_center.serialize()), 201

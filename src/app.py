@@ -32,7 +32,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 MIGRATE = Migrate(app, db, compare_type=True)
 db.init_app(app)
 
-app.config["JWT_SECRET_KEY"] = "palabrasuperlargaycompleja12345" # aqui va la clave
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
 jwt=JWTManager(app)
 # add the admin
 setup_admin(app)

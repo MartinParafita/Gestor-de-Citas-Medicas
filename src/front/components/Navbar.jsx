@@ -1,14 +1,43 @@
 import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import useGlobalReducer from '../hooks/useGlobalReducer';
 
 export const Navbar = () => {
+    const { store, dispatch } = useGlobalReducer();
+    const navigate = useNavigate();
+
+    const handleLogout = () => {
+        localStorage.removeItem("jwt_token");
+        localStorage.removeItem("user_role");
+        dispatch({ type: 'logout' });
+        navigate('/');
+    };
+
+    const dashboardPath = store.role === 'doctor' ? '/DoctorDashboard' : '/PatientDashboard';
+
     return (
         <header style={styles.header}>
-            <h1 style={styles.logo}> <strong> GG Salud </strong> </h1>
-            <nav>
-                <a href="#inicio" style={styles.navLink}>Inicio</a>
-                <a href="#servicios" style={styles.navLink}>Servicios</a>
-                <a href="#citas" style={styles.navLink}>Pedir Cita</a>
-                <a href="#contacto" style={styles.navLink}>Contacto</a>
+            <Link to="/" style={{ textDecoration: 'none' }}>
+                <h1 style={styles.logo}><strong>GG Salud</strong></h1>
+            </Link>
+            <nav style={styles.nav}>
+                {store.token ? (
+                    <>
+                        <span style={styles.welcome}>
+                            Hola, {store.user?.first_name || 'Usuario'} {store.role === 'doctor' ? '🧑‍⚕️' : '🧍'}
+                        </span>
+                        <Link to={dashboardPath} style={styles.navLink}>Mi Panel</Link>
+                        <button onClick={handleLogout} style={styles.logoutButton}>
+                            Cerrar sesión
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <Link to="/" style={styles.navLink}>Inicio</Link>
+                        <Link to="/Login" style={styles.navLink}>Iniciar sesión</Link>
+                        <Link to="/Register" style={styles.navLinkButton}>Registrarse</Link>
+                    </>
+                )}
             </nav>
         </header>
     );
@@ -16,7 +45,7 @@ export const Navbar = () => {
 
 const styles = {
     header: {
-        backgroundColor: '#20B2AA', 
+        backgroundColor: '#20B2AA',
         color: 'white',
         padding: '15px 30px',
         display: 'flex',
@@ -26,38 +55,40 @@ const styles = {
     logo: {
         margin: 0,
         fontSize: '1.8em',
+        color: 'white',
+    },
+    nav: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '15px',
+    },
+    welcome: {
+        color: 'white',
+        fontSize: '0.95em',
     },
     navLink: {
         color: 'white',
         textDecoration: 'none',
-        marginLeft: '25px',
         fontSize: '1.1em',
-    }
+    },
+    navLinkButton: {
+        color: 'white',
+        textDecoration: 'none',
+        fontSize: '1em',
+        backgroundColor: '#FF6347',
+        padding: '7px 16px',
+        borderRadius: '5px',
+        fontWeight: 'bold',
+    },
+    logoutButton: {
+        backgroundColor: 'transparent',
+        border: '2px solid white',
+        color: 'white',
+        padding: '6px 14px',
+        borderRadius: '5px',
+        cursor: 'pointer',
+        fontSize: '0.95em',
+    },
 };
 
 export default Navbar;
-
-
-
-
-
-/*import { Link } from "react-router-dom";
-
-export const Navbar = () => {
-
-	return (
-		<nav className="navbar navbar-light bg-light">
-			<div className="container">
-				<Link to="/">
-					<span className="navbar-brand mb-0 h1">React Boilerplate</span>
-				</Link>
-				<div className="ml-auto">
-					<Link to="/demo">
-						<button className="btn btn-primary">Check the Context in action</button>
-					</Link>
-				</div>
-			</div>
-		</nav>
-	);
-};
-*/

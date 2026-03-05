@@ -1,251 +1,176 @@
-import React, { useState } from 'react';
-import '../css/PatientDashboard.css'; 
+import React, { useState, useEffect } from 'react';
+import useGlobalReducer from '../hooks/useGlobalReducer';
+import { getMyAppointments, createAppointmentAPI, cancelAppointmentAPI, rescheduleAppointmentAPI, getDoctors } from '../services/fetch';
+import '../css/PatientDashboard.css';
 
-// =======================================================================================
-// LÓGICA DE DÍAS Y HORAS
-// =======================================================================================
+// ── Utilidades ────────────────────────────────────────────────────────────────
 
 const generateHours = () => {
     const hours = [];
-    // 9:00 (540 minutos) a 14:00 (840 minutos), intervalo de 30 minutos
     for (let minutes = 540; minutes <= 840; minutes += 30) {
         const h = Math.floor(minutes / 60);
         const m = minutes % 60;
-        const time = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-        hours.push(time);
+        hours.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
     }
     return hours;
 };
 const workingHours = generateHours();
 
-/**
- * Verifica si el día es no laborable (Sábado y Domingo).
- */
-const isUnavailableDay = (date) => {
-    const dayOfWeek = date.getDay(); // 0=Dom, 1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb
-    return dayOfWeek === 0 || dayOfWeek === 6; // Bloquea Sábados y Domingos
+const isWeekend = (date) => {
+    const day = date.getDay();
+    return day === 0 || day === 6;
 };
 
-// Obtiene las horas disponibles (filtrando días no laborables y horarios ocupados simulados)
-const getAvailableHours = (date) => {
-    if (!date || isUnavailableDay(date)) {
-        return []; 
-    }
-
-    // SIMULACIÓN: Bloqueamos algunas horas en el día 15
-    const occupiedSlots = [];
-    if (date.getDate() === 15) {
-        occupiedSlots.push('09:00', '14:00');
-    }
-    
-    return workingHours.filter(hour => !occupiedSlots.includes(hour));
+const formatForAPI = (date, hour) => {
+    const d = date.getDate().toString().padStart(2, '0');
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const y = date.getFullYear();
+    return `${d}-${m}-${y} ${hour}`;
 };
 
-/**
- * Ordena las citas por fecha y hora cronológicamente (más próxima primero).
- */
-const sortAppointmentsChronologically = (appointments) => {
-    // Es crucial que la comparación sea sobre los objetos originales si vamos a usar .indexOf
-    // para encontrar el índice original después de un sort.
-    return [...appointments].sort((a, b) => {
-        const dateA = new Date(a.date);
-        dateA.setHours(parseInt(a.hour.substring(0, 2)), parseInt(a.hour.substring(3, 5)));
-
-        const dateB = new Date(b.date);
-        dateB.setHours(parseInt(b.hour.substring(0, 2)), parseInt(b.hour.substring(3, 5)));
-
-        return dateA - dateB;
-    });
+const parseAPIDate = (isoString) => {
+    if (!isoString) return null;
+    return new Date(isoString);
 };
 
+// ── Componente: Seleccionar Cita (Calendario) ─────────────────────────────────
 
-// =======================================================================================
-// 1. COMPONENTE DE VISTA SECUNDARIA: AgendarCita (Icono de cita actualizado)
-// =======================================================================================
+const AgendarCita = ({ patientName, doctors, onConfirm, existingAppointments }) => {
+    const today = new Date();
+    const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+    const [currentYear, setCurrentYear]   = useState(today.getFullYear());
+    const [selectedDate, setSelectedDate]  = useState(null);
+    const [selectedHour, setSelectedHour]  = useState(null);
+    const [selectedDoctor, setSelectedDoctor] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-const AgendarCita = ({ patientName, hospitalName, onAppointmentConfirmed, initialDate, activeAppointments }) => {
-    
-    const initialMonth = initialDate ? initialDate.getMonth() : new Date().getMonth();
-    const initialYear = initialDate ? initialDate.getFullYear() : new Date().getFullYear();
-
-    const [currentMonth, setCurrentMonth] = useState(initialMonth);
-    const [currentYear, setCurrentYear] = useState(initialYear);
-    
-    const [selectedDate, setSelectedDate] = useState(null);
-    const [availableHours, setAvailableHours] = useState([]);
-    const [selectedHour, setSelectedHour] = useState(null);
-    const [isConfirmed, setIsConfirmed] = useState(false); 
-    
-    const dateToRender = new Date(currentYear, currentMonth, 1);
-    const monthName = dateToRender.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-    
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const daysInMonth    = new Date(currentYear, currentMonth + 1, 0).getDate();
     const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
-    const startingEmptyDays = (firstDayOfWeek + 6) % 7; 
-    
-    // Función para verificar si hay una cita en un día específico del mes/año actual
-    const hasAppointmentOnDay = (day) => {
-        return activeAppointments.some(cita => 
-            cita.date.getDate() === day &&
-            cita.date.getMonth() === currentMonth &&
-            cita.date.getFullYear() === currentYear
-        );
-    };
+    const startOffset    = (firstDayOfWeek + 6) % 7;
+    const monthName      = new Date(currentYear, currentMonth, 1)
+        .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
-    const goToPreviousMonth = () => {
-        const today = new Date();
-        if (currentYear === today.getFullYear() && currentMonth === today.getMonth()) return; 
+    const hasAppointmentOnDay = (day) =>
+        existingAppointments.some(a => {
+            const d = parseAPIDate(a.appointment_date);
+            return d && d.getDate() === day && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        });
 
-        if (currentMonth === 0) {
-            setCurrentMonth(11);
-            setCurrentYear(currentYear - 1);
-        } else {
-            setCurrentMonth(currentMonth - 1);
-        }
+    const prevMonth = () => {
+        if (currentYear === today.getFullYear() && currentMonth === today.getMonth()) return;
+        if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1); }
+        else setCurrentMonth(m => m - 1);
         setSelectedDate(null);
-        setIsConfirmed(false);
     };
 
-    const goToNextMonth = () => {
-        if (currentYear >= 2030) return; 
-        
-        if (currentMonth === 11) {
-            setCurrentMonth(0);
-            setCurrentYear(currentYear + 1);
-        } else {
-            setCurrentMonth(currentMonth + 1);
-        }
+    const nextMonth = () => {
+        if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y + 1); }
+        else setCurrentMonth(m => m + 1);
         setSelectedDate(null);
-        setIsConfirmed(false);
     };
 
-    const handleDaySelect = (day) => {
-        const date = new Date(currentYear, currentMonth, day);
-        
-        if (isUnavailableDay(date)) {
-            setSelectedDate(null);
-            setAvailableHours([]);
-            setSelectedHour(null);
-            setIsConfirmed(false);
+    const handleConfirm = async () => {
+        if (!selectedDate || !selectedHour || !selectedDoctor) {
+            setError('Selecciona fecha, hora y médico.');
             return;
         }
-
-        setSelectedDate(date);
-        setSelectedHour(null); 
-        setIsConfirmed(false);
-        
-        const hours = getAvailableHours(date);
-        setAvailableHours(hours);
-    };
-
-    const handleHourSelect = (hour) => {
-        setSelectedHour(hour);
-        setIsConfirmed(false); 
-    };
-    
-    const handleConfirmAppointment = () => {
-        if (selectedDate && selectedHour) {
-            
-            const appointmentDetails = {
-                patient: patientName,
-                hospital: hospitalName,
-                date: selectedDate, 
-                hour: selectedHour,
-                dateTimeFormatted: `${selectedDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} a las ${selectedHour} hrs`
-            };
-            
-            setIsConfirmed(true);
-            onAppointmentConfirmed(appointmentDetails);
+        setError('');
+        setLoading(true);
+        const result = await createAppointmentAPI({
+            doctor_id: parseInt(selectedDoctor),
+            appointment_date: formatForAPI(selectedDate, selectedHour),
+        });
+        setLoading(false);
+        if (result.success) {
+            onConfirm(result.data);
+        } else {
+            setError(result.message || 'Error al crear la cita.');
         }
     };
 
+    const availableHours = selectedDate && !isWeekend(selectedDate) ? workingHours : [];
 
     return (
         <div className="cita-container">
             <h2>📅 Agendar Nueva Cita</h2>
-            
-            {isConfirmed && (
-                <div className="confirmation-row">
-                    <p>✅ **Cita Confirmada**</p>
-                    <div className="details-grid">
-                        <span>**Paciente:** {patientName}</span>
-                        <span>**Hospital:** {hospitalName}</span>
-                        <span>**Fecha y Hora:** {selectedDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })} a las {selectedHour} hrs</span>
+
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label><strong>Selecciona tu médico:</strong></label>
+                <select
+                    value={selectedDoctor}
+                    onChange={e => setSelectedDoctor(e.target.value)}
+                    style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '5px', border: '1px solid #ccc' }}
+                >
+                    <option value="">-- Elige un médico --</option>
+                    {doctors.map(d => (
+                        <option key={d.id} value={d.id}>
+                            Dr/a. {d.first_name} {d.last_name} — {d.specialty}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            <p>Paso 2: Selecciona la fecha (Lun-Vie) y la hora (9:00 a 14:00)</p>
+
+            <div className="date-selector-mock">
+                <button onClick={prevMonth}>&lt;</button>
+                <span>{monthName.charAt(0).toUpperCase() + monthName.slice(1)}</span>
+                <button onClick={nextMonth}>&gt;</button>
+            </div>
+
+            <div className="centered-calendar-container">
+                <div className="calendar-grid">
+                    {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
+                        <div key={d} className="day-header">{d}</div>
+                    ))}
+                    {[...Array(startOffset)].map((_, i) => <div key={`e-${i}`} className="day-cell empty" />)}
+                    {[...Array(daysInMonth)].map((_, i) => {
+                        const day  = i + 1;
+                        const date = new Date(currentYear, currentMonth, day);
+                        const unavail  = isWeekend(date);
+                        const occupied = hasAppointmentOnDay(day);
+                        const isSelected = selectedDate?.getDate() === day && selectedDate?.getMonth() === currentMonth;
+
+                        return (
+                            <div
+                                key={day}
+                                className={`day-cell ${isSelected ? 'selected' : ''} ${unavail ? 'unavailable-day' : 'working-day'}`}
+                                onClick={() => !unavail && setSelectedDate(date)}
+                            >
+                                {day}
+                                {occupied && <span className="appointment-indicator">🔴</span>}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {selectedDate && !isWeekend(selectedDate) && (
+                <div className="availability-panel">
+                    <h3>Horas disponibles — {selectedDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+                    <div className="hours-list">
+                        {availableHours.map(hour => (
+                            <button
+                                key={hour}
+                                className={`hour-button ${selectedHour === hour ? 'selected-hour' : ''}`}
+                                onClick={() => setSelectedHour(hour)}
+                            >
+                                {hour}
+                            </button>
+                        ))}
                     </div>
                 </div>
             )}
-            
 
-            <p>Paso 1: Selecciona la fecha y hora. (Horario: Lun-Vie de 9:00 a 14:00)</p>
-            
-            <div className="date-selector-mock">
-                <button onClick={goToPreviousMonth}>&lt;</button>
-                <span>{monthName.charAt(0).toUpperCase() + monthName.slice(1)}</span>
-                <button onClick={goToNextMonth} disabled={currentYear >= 2030 && currentMonth === 11}>&gt;</button>
-            </div>
-
-            {/* Calendario Centrado */}
-            <div className="centered-calendar-container">
-                <div className="calendar-grid">
-                    {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
-                        <div key={day} className="day-header">{day}</div>
-                    ))}
-                    
-                    {[...Array(startingEmptyDays)].map((_, i) => <div key={`empty-${i}`} className="day-cell empty"></div>)}
-
-                    {[...Array(daysInMonth)].map((_, i) => {
-                        const day = i + 1;
-                        const dateToCheck = new Date(currentYear, currentMonth, day);
-                        const isUnavailable = isUnavailableDay(dateToCheck);
-                        const isOccupied = hasAppointmentOnDay(day);
-                        
-                        return (
-                            <div 
-                                key={day}
-                                className={`day-cell 
-                                    ${selectedDate && selectedDate.getDate() === day && selectedDate.getMonth() === currentMonth ? 'selected' : ''} 
-                                    ${isUnavailable ? 'unavailable-day' : 'working-day'}
-                                    ${!isUnavailable && getAvailableHours(dateToCheck).length > 0 ? 'has-availability' : ''}
-                                `}
-                                onClick={() => handleDaySelect(day)}
-                            >
-                                {day}
-                                {/* Indicador de cita existente (NUEVO EMOJI Y CSS) */}
-                                {isOccupied && <span className="appointment-indicator">🔴</span>}
-                            </div>
-                        )})}
-                </div>
-            </div>
-
-            {/* Panel de Horas Disponibles */}
-            {selectedDate && !isConfirmed && (
-                <div className="availability-panel">
-                    <h3>Horas Disponibles para el {selectedDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
-                    
-                    {availableHours.length > 0 ? (
-                        <div className="hours-list">
-                            {availableHours.map(hour => (
-                                <button 
-                                    key={hour}
-                                    className={`hour-button ${selectedHour === hour ? 'selected-hour' : ''}`}
-                                    onClick={() => handleHourSelect(hour)}
-                                >
-                                    {hour}
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="no-availability">😔 No hay horarios disponibles para el día seleccionado.</p>
-                    )}
-                </div>
-            )}
-            
-            {/* Botón de Confirmación */}
-            {selectedHour && !isConfirmed && (
+            {selectedDate && selectedHour && (
                 <div className="confirmation-box">
-                    <p>Cita pre-seleccionada: **{selectedDate.toLocaleDateString()} a las {selectedHour}**</p>
-                    <button className="confirm-button" onClick={handleConfirmAppointment}>
-                        Confirmar Cita Ahora
+                    <p>
+                        Pre-selección: <strong>{selectedDate.toLocaleDateString('es-ES')} a las {selectedHour}</strong>
+                    </p>
+                    {error && <p style={{ color: 'red' }}>{error}</p>}
+                    <button className="confirm-button" onClick={handleConfirm} disabled={loading}>
+                        {loading ? 'Confirmando...' : 'Confirmar Cita'}
                     </button>
                 </div>
             )}
@@ -253,251 +178,189 @@ const AgendarCita = ({ patientName, hospitalName, onAppointmentConfirmed, initia
     );
 };
 
+// ── Componente: Gestionar Citas ────────────────────────────────────────────────
 
-// =======================================================================================
-// 2. COMPONENTE DE VISTA SECUNDARIA: GestionarCitas (FUSIONADO y con orden cronológico)
-// =======================================================================================
+const GestionarCitas = ({ appointments, onCancel, onReschedule }) => {
+    const active = appointments.filter(a => a.status !== 'Cancelled');
 
-const GestionarCitas = ({ sortedAppointments, onModifyClick, onCancelCita }) => {
     return (
         <div className="cita-container">
-            <h2>✏️ Gestionar Citas Agendadas</h2>
-            
-            {sortedAppointments && sortedAppointments.length > 0 ? (
-                sortedAppointments.map((cita, index) => (
-                    <div key={index} className="appointment-view gestion-item">
-                        {/* Título Dinámico y Cronológico */}
-                        <h3>
-                            {index + 1}. Cita {cita.date.getDate()} de {cita.date.toLocaleDateString('es-ES', { month: 'long' })}
-                        </h3>
-                        <div className="confirmation-row current-appointment">
-                            <div className="details-grid">
-                                <span>**Paciente:** {cita.patient}</span>
-                                <span>**Hospital:** {cita.hospital}</span>
-                                <span>**Fecha y Hora:** {cita.dateTimeFormatted}</span>
-                            </div>
-                        </div>
-                        
-                        <div className="modification-actions">
-                            {/* Botón Reagendar (Izquierda) */}
-                            <button 
-                                className="confirm-button" 
-                                onClick={() => onModifyClick(cita.originalIndex)} // Usamos el índice original
-                            >
-                                Reagendar
-                            </button>
-                            
-                            {/* Botón Cancelar (Derecha) */}
-                            <button 
-                                className="quick-button button-cancelar cancel-btn" 
-                                onClick={() => onCancelCita(cita.originalIndex)} // Usamos el índice original
-                            >
-                                ¿Cancelar su cita?
-                            </button>
-                        </div>
-                    </div>
-                ))
-            ) : (
+            <h2>✏️ Gestionar Citas</h2>
+            {active.length === 0 ? (
                 <div className="placeholder-content">
-                    <p>No tienes citas activas para gestionar.</p>
+                    <p>No tienes citas activas.</p>
                 </div>
+            ) : (
+                [...active]
+                    .sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date))
+                    .map((cita, i) => {
+                        const date = parseAPIDate(cita.appointment_date);
+                        return (
+                            <div key={cita.id} className="appointment-view gestion-item">
+                                <h3>Cita {i + 1} — {date ? date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</h3>
+                                <div className="confirmation-row current-appointment">
+                                    <div className="details-grid">
+                                        <span><strong>Médico:</strong> {cita.doctor_name || `ID ${cita.doctor_id}`}</span>
+                                        <span><strong>Hora:</strong> {date ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                                        <span><strong>Estado:</strong> {cita.status}</span>
+                                    </div>
+                                </div>
+                                <div className="modification-actions">
+                                    <button className="confirm-button" onClick={() => onReschedule(cita)}>
+                                        Reagendar
+                                    </button>
+                                    <button className="quick-button button-cancelar cancel-btn" onClick={() => onCancel(cita.id)}>
+                                        Cancelar cita
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })
             )}
         </div>
     );
 };
 
+// ── Componente: Historial ──────────────────────────────────────────────────────
 
-// =======================================================================================
-// 3. DATOS Y LÓGICA DE NAVEGACIÓN
-// =======================================================================================
+const HistorialCitas = ({ appointments }) => {
+    const cancelled = appointments.filter(a => a.status === 'Cancelled');
+    const all = [...appointments].sort((a, b) => new Date(b.appointment_date) - new Date(a.appointment_date));
 
-const mapPathToView = (path) => {
-    return path.split('/').pop(); 
+    return (
+        <div className="cita-container">
+            <h2>📋 Historial de Citas</h2>
+            {all.length === 0 ? (
+                <p>No tienes citas registradas.</p>
+            ) : (
+                all.map((cita) => {
+                    const date = parseAPIDate(cita.appointment_date);
+                    return (
+                        <div key={cita.id} className="appointment-view gestion-item" style={{ opacity: cita.status === 'Cancelled' ? 0.6 : 1 }}>
+                            <div className="details-grid">
+                                <span><strong>Fecha:</strong> {date ? date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span>
+                                <span><strong>Hora:</strong> {date ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                                <span><strong>Médico:</strong> {cita.doctor_name || `ID ${cita.doctor_id}`}</span>
+                                <span>
+                                    <strong>Estado:</strong>{' '}
+                                    <span style={{ color: cita.status === 'Cancelled' ? 'red' : cita.status === 'Pending' ? 'orange' : 'green' }}>
+                                        {cita.status}
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })
+            )}
+        </div>
+    );
 };
+
+// ── Menú lateral ──────────────────────────────────────────────────────────────
 
 const patientMenuData = [
     {
-        title: '1. Citas médicas',
-        icon: '📅',
+        title: '1. Citas médicas', icon: '📅',
         links: [
-            { name: 'Agendar cita', path: '/paciente/agendar-cita' },
-            { name: 'Gestionar citas', path: '/paciente/gestionar-citas' }, // NUEVO ENLACE
-            { name: 'Historial de citas', path: '/paciente/historial-citas' },
-            { name: 'Recordatorios automáticos', path: '/paciente/recordatorios' },
+            { name: 'Agendar cita', view: 'agendar-cita' },
+            { name: 'Gestionar citas', view: 'gestionar-citas' },
+            { name: 'Historial de citas', view: 'historial-citas' },
         ],
     },
-    // ... (El resto del menú se mantiene igual)
-    {
-        title: '2. Resultados e informes médicos',
-        icon: '🔬',
-        links: [
-            { name: 'Análisis clínicos y de laboratorio', path: '/paciente/analisis' },
-            { name: 'Informes de radiología o diagnóstico', path: '/paciente/radiologia' },
-            { name: 'Informes de alta hospitalaria', path: '/paciente/alta' },
-            { name: 'Historial médico completo', path: '/paciente/historial-medico' },
-        ],
-    },
-    {
-        title: '3. Prescripciones y medicación',
-        icon: '💊',
-        links: [
-            { name: 'Visualizar recetas activas', path: '/paciente/recetas-activas' },
-            { name: 'Descargar receta electrónica', path: '/paciente/descargar-receta' },
-            { name: 'Solicitar renovación o revisión', path: '/paciente/solicitar-renovacion' },
-            { name: 'Historial de medicación', path: '/paciente/historial-medicacion' },
-        ],
-    },
-    {
-        title: '4. Facturación y seguros',
-        icon: '💳',
-        links: [
-            { name: 'Visualizar facturas (pagadas o pendientes)', path: '/paciente/facturas' },
-            { name: 'Realizar pagos online', path: '/paciente/pagos' },
-            { name: 'Consultar cobertura o aseguradora', path: '/paciente/cobertura' },
-        ],
-    },
-    {
-        title: '5. Comunicación directa',
-        icon: '💬',
-        links: [
-            { name: 'Mensajería segura con el médico', path: '/paciente/mensajeria' },
-            { name: 'Solicitudes administrativas', path: '/paciente/solicitudes-adm' },
-            { name: 'Alertas o notificaciones del hospital', path: '/paciente/alertas' },
-        ],
-    },
-    {
-        title: '6. Documentos personales',
-        icon: '📁',
-        links: [
-            { name: 'Subir documentos externos', path: '/paciente/subir-docs' },
-            { name: 'Descargar documentos del hospital', path: '/paciente/descargar-docs' },
-        ],
-    },
-    {
-        title: '7. Perfil y configuración',
-        icon: '⚙️',
-        links: [
-            { name: 'Datos personales y de contacto', path: '/paciente/datos-personales' },
-            { name: 'Preferencias de notificación', path: '/paciente/preferencias' },
-            { name: 'Gestión de contraseñas y seguridad', path: '/paciente/seguridad' },
-        ],
-    },
+    { title: '2. Resultados e informes', icon: '🔬', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '3. Prescripciones', icon: '💊', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '4. Facturación y seguros', icon: '💳', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '5. Comunicación', icon: '💬', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '6. Documentos personales', icon: '📁', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '7. Perfil y configuración', icon: '⚙️', links: [{ name: 'Próximamente', view: 'placeholder' }] },
 ];
 
-// =======================================================================================
-// 4. COMPONENTE PRINCIPAL: PatientDashboard
-// =======================================================================================
+// ── Dashboard principal ───────────────────────────────────────────────────────
 
 const PatientDashboard = () => {
-    const [currentView, setCurrentView] = useState('welcome'); 
-    const [openAccordion, setOpenAccordion] = useState(null); 
-    const [activeAppointments, setActiveAppointments] = useState([]); 
-    const [isModifying, setIsModifying] = useState(false);
-    const [appointmentToModifyIndex, setAppointmentToModifyIndex] = useState(null); 
+    const { store } = useGlobalReducer();
+    const [currentView, setCurrentView]         = useState('welcome');
+    const [openAccordion, setOpenAccordion]     = useState(null);
+    const [appointments, setAppointments]       = useState([]);
+    const [doctors, setDoctors]                 = useState([]);
+    const [loadingData, setLoadingData]         = useState(true);
+    const [citaToReschedule, setCitaToReschedule] = useState(null);
 
-    // Simulación de datos del usuario logueado
-    const patientName = "María Gómez"; 
-    const hospitalName = "Hospital General San Juan";
+    const patientName = store.user
+        ? `${store.user.first_name} ${store.user.last_name}`
+        : 'Paciente';
 
-    const handleNavigationClick = (path) => {
-        const viewKey = mapPathToView(path);
-        
-        // El modo modificación solo se activa para agendar-cita (calendario)
-        if (viewKey !== 'agendar-cita') {
-            setIsModifying(false);
-            // Solo reseteamos el índice si no es la vista de gestión, para que se mantenga el contexto
-            if (viewKey !== 'gestionar-citas') {
-                setAppointmentToModifyIndex(null);
-            }
-        }
-        setCurrentView(viewKey);
-    };
-    
-    // Handler cuando AgendarCita confirma una cita
-    const handleAppointmentConfirmed = (appointmentDetails) => {
-        let newAppointments;
-
-        if (isModifying && appointmentToModifyIndex !== null) {
-            // Caso de MODIFICACIÓN
-            newAppointments = activeAppointments.map((cita, index) => 
-                index === appointmentToModifyIndex ? appointmentDetails : cita
-            );
-            setIsModifying(false);
-            setAppointmentToModifyIndex(null);
-        } else {
-            // Caso de NUEVA CITA
-            newAppointments = [...activeAppointments, appointmentDetails];
-        }
-        
-        setActiveAppointments(newAppointments);
-        setCurrentView('gestionar-citas'); // Redirige a la nueva vista de gestión
-    };
-
-    // Handler cuando GestionarCitas quiere reagendar
-    const handleModifyClick = (originalIndex) => {
-        setAppointmentToModifyIndex(originalIndex); 
-        setIsModifying(true); 
-        setCurrentView('agendar-cita'); // Abre el calendario
-    };
-    
-    // Handler cuando GestionarCitas quiere cancelar
-    const handleCancelCita = (indexToCancel) => {
-        if (window.confirm("¿Estás seguro de que quieres CANCELAR esta cita?")) {
-            const newAppointments = activeAppointments.filter((_, index) => index !== indexToCancel);
-            setActiveAppointments(newAppointments);
-            setCurrentView('gestionar-citas'); // Mantener en la vista de gestión
-            console.log(`Cita N° ${indexToCancel + 1} Cancelada.`);
-        }
-    };
-
-    const handleAccordionToggle = (title) => {
-        setOpenAccordion(openAccordion === title ? null : title);
-    };
-    
-    const handleQuickAccessClick = (action) => {
-        const pathMap = {
-            'Tus citas': '/paciente/agendar-cita', 
-            'Gestionar citas': '/paciente/gestionar-citas', // NUEVO BOTÓN RÁPIDO
+    useEffect(() => {
+        const load = async () => {
+            setLoadingData(true);
+            const [apptResult, docResult] = await Promise.all([
+                getMyAppointments(),
+                getDoctors(),
+            ]);
+            if (apptResult.success) setAppointments(apptResult.data);
+            if (docResult.success)  setDoctors(docResult.data);
+            setLoadingData(false);
         };
-        handleNavigationClick(pathMap[action]);
+        load();
+    }, []);
+
+    const handleAppointmentConfirmed = (newAppt) => {
+        setAppointments(prev => [...prev, newAppt]);
+        setCitaToReschedule(null);
+        setCurrentView('gestionar-citas');
+    };
+
+    const handleCancel = async (id) => {
+        if (!window.confirm('¿Seguro que quieres cancelar esta cita?')) return;
+        const result = await cancelAppointmentAPI(id);
+        if (result.success) {
+            setAppointments(prev => prev.map(a => a.id === id ? result.data : a));
+        } else {
+            alert('Error al cancelar: ' + result.message);
+        }
+    };
+
+    const handleReschedule = (cita) => {
+        setCitaToReschedule(cita);
+        setCurrentView('agendar-cita');
     };
 
     const renderContent = () => {
-        const citaToModify = appointmentToModifyIndex !== null ? activeAppointments[appointmentToModifyIndex] : null;
-        
-        // Preparamos la lista ordenada y con el índice original para las vistas de gestión
-        const sortedAppointmentsWithIndex = sortAppointmentsChronologically(activeAppointments).map((cita, index, array) => {
-            // Buscamos el índice original del objeto dentro del array activo sin ordenar
-            const originalIndex = activeAppointments.indexOf(cita);
-            return { ...cita, originalIndex };
-        });
-
+        if (loadingData) return <div className="placeholder-content"><p>Cargando...</p></div>;
 
         switch (currentView) {
             case 'agendar-cita':
                 return (
-                    <AgendarCita 
-                        patientName={patientName} 
-                        hospitalName={hospitalName} 
-                        onAppointmentConfirmed={handleAppointmentConfirmed} 
-                        initialDate={citaToModify ? citaToModify.date : null}
-                        activeAppointments={activeAppointments} 
+                    <AgendarCita
+                        patientName={patientName}
+                        doctors={doctors}
+                        onConfirm={handleAppointmentConfirmed}
+                        existingAppointments={appointments}
                     />
                 );
-            case 'gestionar-citas': // NUEVA VISTA
+            case 'gestionar-citas':
                 return (
-                    <GestionarCitas 
-                        sortedAppointments={sortedAppointmentsWithIndex} 
-                        onModifyClick={handleModifyClick}
-                        onCancelCita={handleCancelCita}
+                    <GestionarCitas
+                        appointments={appointments}
+                        onCancel={handleCancel}
+                        onReschedule={handleReschedule}
                     />
                 );
-            case 'welcome':
+            case 'historial-citas':
+                return <HistorialCitas appointments={appointments} />;
+            case 'placeholder':
+                return (
+                    <div className="placeholder-content">
+                        <h3>🚧 Próximamente</h3>
+                        <p>Esta sección está en desarrollo.</p>
+                    </div>
+                );
             default:
                 return (
                     <div className="placeholder-content">
-                        <h3>Área de Contenido Principal</h3>
-                        <p>Selecciona una opción del menú lateral o usa los botones de acceso rápido.</p>
+                        <h3>Bienvenido/a al Panel</h3>
+                        <p>Selecciona una opción del menú lateral.</p>
+                        <p>Tienes <strong>{appointments.filter(a => a.status !== 'Cancelled').length}</strong> cita(s) activa(s).</p>
                     </div>
                 );
         }
@@ -505,86 +368,50 @@ const PatientDashboard = () => {
 
     return (
         <div className="dashboard-container">
-            {/* Sidebar con el menú de acordeón */}
             <div className="sidebar">
-                <h2 className="main-title">👋 Panel de Control del Paciente</h2>
-                
-                {patientMenuData.map((item, index) => {
-                    const isOpen = openAccordion === item.title;
+                <h2 className="main-title">👋 Panel del Paciente</h2>
 
+                {patientMenuData.map((item) => {
+                    const isOpen = openAccordion === item.title;
                     return (
-                        <div key={index} className="accordion-item">
-                            {/* Header del acordeón */}
-                            <div 
-                                className="accordion-header" 
-                                onClick={() => handleAccordionToggle(item.title)}
-                            >
-                                <div>
-                                    <span className="icon">{item.icon}</span> {item.title}
-                                </div>
+                        <div key={item.title} className="accordion-item">
+                            <div className="accordion-header" onClick={() => setOpenAccordion(isOpen ? null : item.title)}>
+                                <div><span className="icon">{item.icon}</span> {item.title}</div>
                                 <span className={`arrow ${isOpen ? 'rotated' : ''}`}>&gt;</span>
                             </div>
-
-                            {/* Contenido del acordeón */}
                             <div className={`accordion-content ${isOpen ? 'active' : ''}`}>
-                                {item.links.map((link, linkIndex) => {
-                                    // Filtramos los enlaces obsoletos (Modificar cita y Cancelar cita)
-                                    if (link.name === 'Modificar cita' || link.name === 'Cancelar cita') return null;
-
-                                    return (
-                                        <a
-                                            key={linkIndex}
-                                            href="#" 
-                                            className="secondary-link"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                // Mapeo especial para los enlaces que se fusionaron
-                                                let path = link.path;
-                                                if (path.includes('modificar-cita') || path.includes('cancelar-cita')) {
-                                                    path = '/paciente/gestionar-citas';
-                                                }
-                                                handleNavigationClick(path);
-                                            }}
-                                        >
-                                            {link.name}
-                                        </a>
-                                    );
-                                })}
+                                {item.links.map((link) => (
+                                    <a
+                                        key={link.name}
+                                        href="#"
+                                        className="secondary-link"
+                                        onClick={(e) => { e.preventDefault(); setCurrentView(link.view); }}
+                                    >
+                                        {link.name}
+                                    </a>
+                                ))}
                             </div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* Contenido principal */}
             <div className="content">
-                <h1>Bienvenido/a, {patientName}</h1> 
-                <p>Tu información de salud a un clic. Utiliza el menú lateral o el acceso rápido para navegar.</p>
-                
-                {/* SECCIÓN DE BOTONES DE ACCESO RÁPIDO (AJUSTADO) */}
+                <h1>Bienvenido/a, {patientName}</h1>
+                <p>Tu información de salud a un clic.</p>
+
                 <div className="quick-access-buttons">
-                    
-                    <button 
-                        className="quick-button button-agenda"
-                        onClick={() => handleQuickAccessClick('Tus citas')} 
-                    >
-                        <span className="button-icon">📅</span> 
-                        Tus citas
+                    <button className="quick-button button-agenda" onClick={() => setCurrentView('agendar-cita')}>
+                        <span className="button-icon">📅</span> Agendar cita
                     </button>
-                    
-                    <button 
-                        className="quick-button button-modificar"
-                        onClick={() => handleQuickAccessClick('Gestionar citas')} // RENOMBRADO
-                    >
-                        <span className="button-icon">✏️</span>
-                        Gestionar citas
+                    <button className="quick-button button-modificar" onClick={() => setCurrentView('gestionar-citas')}>
+                        <span className="button-icon">✏️</span> Gestionar citas
                     </button>
-                    
-                    {/* ELIMINADO: Botón rápido de Cancelar cita */}
-                    
+                    <button className="quick-button" style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }} onClick={() => setCurrentView('historial-citas')}>
+                        <span className="button-icon">📋</span> Historial
+                    </button>
                 </div>
-                
-                {/* Renderizado Dinámico del Contenido */}
+
                 {renderContent()}
             </div>
         </div>
