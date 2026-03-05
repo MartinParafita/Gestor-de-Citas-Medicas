@@ -1,81 +1,101 @@
-# WebApp boilerplate with React JS and Flask API
+🏥 Sistema de Gestión de Citas Médicas
 
-Build web applications using React.js for the front end and python/flask for your backend API.
+Este proyecto es una plataforma web integral diseñada para la gestión eficiente y segura de citas médicas. Permite a los pacientes programar, consultar y gestionar sus citas, mientras que a los profesionales médicos les facilita la visualización y administración de su agenda diaria.
 
-- Documentation can be found here: https://4geeks.com/docs/start/react-flask-template
-- Here is a video on [how to use this template](https://www.loom.com/share/f37c6838b3f1496c95111e515e83dd9b)
-- Integrated with Pipenv for package managing.
-- Fast deployment to Render [in just a few steps here](https://4geeks.com/docs/start/deploy-to-render-com).
-- Use of .env file.
-- SQLAlchemy integration for database abstraction.
+La aplicación sigue una arquitectura Full Stack y ha sido desarrollada con un fuerte enfoque en la separación de responsabilidades y la experiencia de usuario (UX).
 
-### 1) Installation:
+🚀 Características Principales
 
-> If you use Github Codespaces (recommended) or Gitpod this template will already come with Python, Node and the Posgres Database installed. If you are working locally make sure to install Python 3.10, Node 
+1. Dashboards Dedicados
 
-It is recomended to install the backend first, make sure you have Python 3.10, Pipenv and a database engine (Posgress recomended)
+La aplicación ofrece dos interfaces de usuario completamente separadas y optimizadas para cada rol:
 
-1. Install the python packages: `$ pipenv install`
-2. Create a .env file based on the .env.example: `$ cp .env.example .env`
-3. Install your database engine and create your database, depending on your database you have to create a DATABASE_URL variable with one of the possible values, make sure you replace the valudes with your database information:
+Dashboard del Paciente:
 
-| Engine    | DATABASE_URL                                        |
-| --------- | --------------------------------------------------- |
-| SQLite    | sqlite:////test.db                                  |
-| MySQL     | mysql://username:password@localhost:port/example    |
-| Postgress | postgres://username:password@localhost:5432/example |
+Selección de Centro: Permite al paciente elegir el centro de salud donde desea ser atendido.
 
-4. Migrate the migrations: `$ pipenv run migrate` (skip if you have not made changes to the models on the `./src/api/models.py`)
-5. Run the migrations: `$ pipenv run upgrade`
-6. Run the application: `$ pipenv run start`
+Búsqueda y Programación: Facilita la búsqueda de doctores disponibles por especialidad y la reserva de citas en horarios libres.
 
-> Note: Codespaces users can connect to psql by typing: `psql -h localhost -U gitpod example`
+Gestión de Citas: Permite a los pacientes revisar sus citas futuras y cancelarlas según sea necesario.
 
-### Undo a migration
+Dashboard del Doctor:
 
-You are also able to undo a migration by running
+Asignación de Centro: El médico puede seleccionar el centro donde va a trabajar para cargar su agenda.
 
-```sh
-$ pipenv run downgrade
-```
+Agenda Interactiva: Visualización clara de las citas diarias a través de un calendario dinámico.
 
-### Backend Populate Table Users
+Control de Estado (Misión Crítica): Implementa un menú desplegable interactivo para que el médico pueda actualizar el estado de la cita en tiempo real (Pendiente, En Progreso, Finalizada, Cancelada), reflejando el cambio directamente en la base de datos.
 
-To insert test users in the database execute the following command:
+Seguridad: Persistencia de sesión segura para el acceso al panel.
 
-```sh
-$ flask insert-test-users 5
-```
+2. Arquitectura de Servicios y Seguridad
 
-And you will see the following message:
+Se implementó una arquitectura de API con rutas exclusivas para cada acción crítica, mejorando la robustez y la claridad del código:
 
-```
-  Creating test users
-  test_user1@test.com created.
-  test_user2@test.com created.
-  test_user3@test.com created.
-  test_user4@test.com created.
-  test_user5@test.com created.
-  Users created successfully!
-```
+Ruta Atómica para el Estado: Se definió la ruta PATCH /appointments/status/<id> que está dedicada exclusivamente al cambio del campo status de una cita. Esto garantiza la integridad de los datos y minimiza riesgos de manipulación accidental de otros campos.
 
-### **Important note for the database and the data inside it**
+💻 Tecnologías Utilizadas
 
-Every Github codespace environment will have **its own database**, so if you're working with more people eveyone will have a different database and different records inside it. This data **will be lost**, so don't spend too much time manually creating records for testing, instead, you can automate adding records to your database by editing ```commands.py``` file inside ```/src/api``` folder. Edit line 32 function ```insert_test_data``` to insert the data according to your model (use the function ```insert_test_users``` above as an example). Then, all you need to do is run ```pipenv run insert-test-data```.
+El proyecto se basa en una arquitectura de servicios moderna que separa claramente el Front-end y el Back-end.
 
-### Front-End Manual Installation:
+Front-end (Interfaz de Usuario)
 
--   Make sure you are using node version 20 and that you have already successfully installed and runned the backend.
+El Front-end está construido sobre una pila React robusta y optimizada:
 
-1. Install the packages: `$ npm install`
-2. Start coding! start the webpack dev server `$ npm run start`
+Tecnología Principal: React.
 
-## Publish your website!
+Lenguaje: JavaScript (ES6+).
 
-This boilerplate it's 100% read to deploy with Render.com and Heroku in a matter of minutes. Please read the [official documentation about it](https://4geeks.com/docs/start/deploy-to-render-com).
+Manejo de Estado: Uso intensivo de React Hooks (useState, useEffect, useMemo) para la gestión del estado y la optimización del rendimiento (ej: filtrado de citas).
 
-### Contributors
+Navegación: react-router-dom para gestionar las rutas de la aplicación.
 
-This template was built as part of the 4Geeks Academy [Coding Bootcamp](https://4geeksacademy.com/us/coding-bootcamp) by [Alejandro Sanchez](https://twitter.com/alesanchezr) and many other contributors. Find out more about our [Full Stack Developer Course](https://4geeksacademy.com/us/coding-bootcamps/part-time-full-stack-developer), and [Data Science Bootcamp](https://4geeksacademy.com/us/coding-bootcamps/datascience-machine-learning).
+Estilización: CSS y clases para un diseño responsivo y claro.
 
-You can find other templates and resources like this at the [school github page](https://github.com/4geeksacademy/).
+Back-end (API y Servicios)
+
+El servidor y la lógica de negocio se gestionan con las siguientes tecnologías:
+
+Lenguaje de Servidor: Python (Asumiendo un framework como Flask o Django).
+
+Arquitectura: RESTful API para definir las rutas HTTP (GET, POST, PATCH) y la comunicación entre el Front-end y la base de datos.
+
+Persistencia de Datos: Base de Datos (SQL o NoSQL) para almacenar información de centros, doctores, pacientes y citas.
+
+Seguridad y Comunicación
+
+Autenticación: Uso de Tokens de Autenticación (Bearer Token) almacenados en localStorage para proteger las rutas críticas.
+
+Conexión Segura: Se recomienda el uso de HTTPS para el cifrado de datos en tránsito.
+
+Manejo de Errores: Implementación de manejadores de errores en las funciones de fetch para notificar fallos del servidor de forma clara al usuario.
+
+⚙️ Configuración y Ejecución
+
+Para ejecutar este proyecto localmente, necesitarás configurar el Back-end y el Front-end.
+
+Clonar el Repositorio:
+
+git clone [https://aws.amazon.com/es/what-is/repo/](https://aws.amazon.com/es/what-is/repo/)
+cd [Nombre del proyecto]
+
+
+Configuración del Back-end (Python):
+
+Instalar dependencias de Python (ej: pip install -r requirements.txt).
+
+Configurar la conexión a la base de datos.
+
+Iniciar el servidor (Ej: python app.py).
+
+Asegúrese de que la API esté disponible en la URL definida como OWN_API.
+
+Configuración del Front-end (React):
+
+Navegar al directorio del Front-end.
+
+Instalar dependencias de Node: npm install o yarn install.
+
+Iniciar la aplicación de React: npm start o yarn start.
+
+La aplicación de React se ejecutará típicamente en http://localhost:3000.
