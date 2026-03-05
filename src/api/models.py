@@ -98,10 +98,10 @@ class Doctor(db.Model):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     first_name: Mapped[str] = mapped_column(String(255), nullable=False)
     last_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    specialty: Mapped[str] = mapped_column(String(80))
+    specialty: Mapped[str] = mapped_column(String(80), nullable=True)
     center_id: Mapped[int] = mapped_column(Integer, ForeignKey(
         "centers.id", ondelete="SET NULL"), index=True, nullable=True)
-    work_days: Mapped[int] = mapped_column(Integer)
+    work_days: Mapped[int] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean)
     password: Mapped[str] = mapped_column(String(255))
 
@@ -225,7 +225,7 @@ class Center(db.Model):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(255))
     zip_code: Mapped[str] = mapped_column(String(30))
-    phone: Mapped[int] = mapped_column(Integer)
+    phone: Mapped[str] = mapped_column(String)
     type_center: Mapped[str] = mapped_column(String(80))
 
     doctors: Mapped["Doctor"] = relationship(

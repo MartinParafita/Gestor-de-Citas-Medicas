@@ -13,6 +13,7 @@ function Register() {
     const [phoneNumber, setPhoneNumber]       = useState('');
     const [role, setRole]                     = useState('');
     const [licenseNumber, setLicenseNumber]   = useState('');
+    const [specialty, setSpecialty]           = useState('');
     const [password, setPassword]             = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [message, setMessage]               = useState(null);
@@ -22,7 +23,10 @@ function Register() {
 
     const handleRoleChange = (selectedRole) => {
         setRole(selectedRole);
-        if (selectedRole !== 'doctor') setLicenseNumber('');
+        if (selectedRole !== 'doctor') {
+            setLicenseNumber('');
+            setSpecialty('');
+        }
     };
 
     const handleRegistration = async (event) => {
@@ -42,13 +46,17 @@ function Register() {
                 setMessage({ text: 'El Número de Matrícula debe tener exactamente 9 dígitos. 🔢', type: 'error' });
                 return;
             }
+            if (!specialty || specialty.trim().length < 3) {
+                setMessage({ text: 'Por favor, introduce tu especialidad médica.', type: 'error' });
+                return;
+            }
         }
         if (!isValidEmail(email)) {
             setMessage({ text: 'Por favor, introduce un correo electrónico válido. 📧', type: 'error' });
             return;
         }
         if (phoneNumber && !/^\d{9,}$/.test(phoneNumber)) {
-            setMessage({ text: 'Por favor, introduce un número de teléfono válido (mín. 9 dígitos). 📞', type: 'error' });
+            setMessage({ text: 'Número de teléfono inválido (mín. 9 dígitos). 📞', type: 'error' });
             return;
         }
         if (password.length < 6) {
@@ -61,7 +69,10 @@ function Register() {
         }
 
         const registrationData = { first_name, last_name, birth_date, email, password, role };
-        if (role === 'doctor') registrationData.license_number = licenseNumber;
+        if (role === 'doctor') {
+            registrationData.license_number = licenseNumber;
+            registrationData.specialty = specialty;
+        }
 
         setLoading(true);
         const result = await register(registrationData);
@@ -118,17 +129,29 @@ function Register() {
                 </div>
 
                 {role === 'doctor' && (
-                    <div className="form-group license-group">
-                        <label>Número de Matrícula de Colegiado (9 dígitos):</label>
-                        <input
-                            type="number"
-                            value={licenseNumber}
-                            onChange={(e) => setLicenseNumber(e.target.value)}
-                            placeholder="Ej: 123456789"
-                            required
-                            maxLength="9"
-                        />
-                    </div>
+                    <>
+                        <div className="form-group license-group">
+                            <label>Número de Matrícula de Colegiado (9 dígitos):</label>
+                            <input
+                                type="number"
+                                value={licenseNumber}
+                                onChange={(e) => setLicenseNumber(e.target.value)}
+                                placeholder="Ej: 123456789"
+                                required
+                                maxLength="9"
+                            />
+                        </div>
+                        <div className="form-group specialty-group">
+                            <label>Especialidad:</label>
+                            <input
+                                type="text"
+                                value={specialty}
+                                onChange={(e) => setSpecialty(e.target.value)}
+                                placeholder="Ej. Cardiología, Pediatría..."
+                                required
+                            />
+                        </div>
+                    </>
                 )}
 
                 <hr className="divider" />
