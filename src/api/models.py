@@ -17,7 +17,7 @@ class User(db.Model):
 
     def serialize(self):
         return {
-            "id": generete_id(),
+            "id": self.id,
             "email": self.email,
             "is_active": self.is_active,
         }
@@ -177,14 +177,16 @@ class Appointment(db.Model):
         "Patient", back_populates="appointments")
     center: Mapped["Center"] = relationship("Center")
 
-    def serialize(self) -> dict: 
+    def serialize(self) -> dict:
             return {
                 "id": self.id,
                 "doctor_id": self.doctor_id,
                 "patient_id": self.patient_id,
                 "center_id": self.center_id,
-                "appointment_date": self.appointment_date,
-                "status": self.status
+                "appointment_date": self.appointment_date.isoformat() if self.appointment_date else None,
+                "status": self.status,
+                "doctor_name": f"{self.doctor.first_name} {self.doctor.last_name}" if self.doctor else None,
+                "patient_name": f"{self.patient.first_name} {self.patient.last_name}" if self.patient else None,
             }
     
 
