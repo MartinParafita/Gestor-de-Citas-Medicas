@@ -1,10 +1,14 @@
 from flask import request, jsonify, Blueprint
-from api.models import db, Patient, Doctor, Appointment, Center
+from api.models import db, Patient, Doctor, Appointment, Center, Prescription, ClinicalRecord
 from api.utils import APIException
 from flask_cors import CORS
 import bcrypt
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime
+import smtplib
+import os
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 api = Blueprint('api', __name__)
 CORS(api)
@@ -469,6 +473,259 @@ def get_doctor_patients():
     patient_ids = [pid[0] for pid in patient_ids]
     patients = Patient.query.filter(Patient.id.in_(patient_ids)).all()
     return jsonify([p.serialize() for p in patients]), 200
+
+
+# ── Prescripciones ───────────────────────────────────────────────────────────
+
+def send_prescription_email(patient_email, patient_name, doctor_name, medication, dosage, instructions):
+    """
+    Intenta enviar la receta al email del paciente.
+    Retorna True si se envió, False si no hay credenciales o si ocurre un error.
+    Las variables de entorno MAIL_USERNAME y MAIL_PASSWORD deben estar configuradas.
+    """
+    mail_user = os.environ.get("MAIL_USERNAME")
+    mail_pass = os.environ.get("MAIL_PASSWORD")
+    mail_server = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+    mail_port = int(os.environ.get("MAIL_PORT", 587))
+
+    if not mail_user or not mail_pass:
+        print("[EMAIL] Sin credenciales configuradas. El email no fue enviado.")
+        return False
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Tu receta médica — GG Salud"
+        msg["From"] = mail_user
+        msg["To"] = patient_email
+
+        body_text = (
+            f"Hola {patient_name},\n\n"
+            f"El/La Dr/a. {doctor_name} te ha emitido la siguiente receta:\n\n"
+            f"Medicamento: {medication}\n"
+            f"Dosis: {dosage}\n"
+            f"Instrucciones: {instructions or 'Sin indicaciones adicionales.'}\n\n"
+            f"GG Salud — Sistema de gestión médica"
+        )
+
+        body_html = f"""
+        <html><body>
+        <h2 style="color:#20B2AA;">Receta Médica — GG Salud</h2>
+        <p>Hola <strong>{patient_name}</strong>,</p>
+        <p>El/La <strong>Dr/a. {doctor_name}</strong> te ha emitido la siguiente receta:</p>
+        <table style="border-collapse:collapse; width:100%; max-width:500px;">
+            <tr><td style="padding:8px; background:#f0fafa; font-weight:bold;">Medicamento</td>
+                <td style="padding:8px; border-bottom:1px solid #eee;">{medication}</td></tr>
+            <tr><td style="padding:8px; background:#f0fafa; font-weight:bold;">Dosis</td>
+                <td style="padding:8px; border-bottom:1px solid #eee;">{dosage}</td></tr>
+            <tr><td style="padding:8px; background:#f0fafa; font-weight:bold;">Instrucciones</td>
+                <td style="padding:8px;">{instructions or 'Sin indicaciones adicionales.'}</td></tr>
+        </table>
+        <br/><p style="color:#888; font-size:12px;">GG Salud — Sistema de gestión médica</p>
+        </body></html>
+        """
+
+        msg.attach(MIMEText(body_text, "plain"))
+        msg.attach(MIMEText(body_html, "html"))
+
+        with smtplib.SMTP(mail_server, mail_port) as server:
+            server.starttls()
+            server.login(mail_user, mail_pass)
+            server.sendmail(mail_user, patient_email, msg.as_string())
+
+        print(f"[EMAIL] Receta enviada a {patient_email}")
+        return True
+
+    except Exception as e:
+        print(f"[EMAIL] Error al enviar email: {e}")
+        return False
+
+
+@api.route('/prescription', methods=['POST'])
+@jwt_required()
+def create_prescription():
+    """
+    Crea una nueva receta médica y la envía por email al paciente (si hay credenciales).
+
+    Requiere JWT de médico.
+
+    Body JSON:
+        patient_id   (int) : ID del paciente.
+        medication   (str) : Nombre del medicamento.
+        dosage       (str) : Dosis.
+        instructions (str) : Instrucciones opcionales.
+
+    Respuesta 201: receta creada + email_sent (bool).
+    Errores:
+        400 — faltan campos requeridos.
+        404 — paciente no encontrado.
+    """
+    doctor_id = int(get_jwt_identity())
+    doctor = Doctor.query.get(doctor_id)
+    if not doctor:
+        return jsonify({"error": "Médico no encontrado"}), 404
+
+    data = request.get_json()
+    patient_id   = data.get("patient_id")
+    medication   = data.get("medication", "").strip()
+    dosage       = data.get("dosage", "").strip()
+    instructions = data.get("instructions", "").strip() or None
+
+    if not patient_id or not medication or not dosage:
+        return jsonify({"error": "patient_id, medication y dosage son requeridos."}), 400
+
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado"}), 404
+
+    prescription = Prescription.create(
+        doctor_id=doctor_id,
+        patient_id=patient_id,
+        medication=medication,
+        dosage=dosage,
+        instructions=instructions,
+    )
+
+    email_sent = send_prescription_email(
+        patient_email=patient.email,
+        patient_name=f"{patient.first_name} {patient.last_name}",
+        doctor_name=f"{doctor.first_name} {doctor.last_name}",
+        medication=medication,
+        dosage=dosage,
+        instructions=instructions,
+    )
+
+    return jsonify({**prescription.serialize(), "email_sent": email_sent}), 201
+
+
+@api.route('/my/prescriptions', methods=['GET'])
+@jwt_required()
+def get_my_prescriptions():
+    """
+    Retorna todas las recetas del paciente autenticado (de cualquier médico).
+
+    Requiere JWT de paciente.
+
+    Respuesta 200: lista de recetas (serialize), ordenadas de más reciente a más antigua.
+    """
+    patient_id = int(get_jwt_identity())
+    prescriptions = (
+        Prescription.query
+        .filter_by(patient_id=patient_id)
+        .order_by(Prescription.created_at.desc())
+        .all()
+    )
+    return jsonify([p.serialize() for p in prescriptions]), 200
+
+
+@api.route('/patient/<int:patient_id>/prescriptions', methods=['GET'])
+@jwt_required()
+def get_patient_prescriptions(patient_id):
+    """
+    Retorna las recetas emitidas para un paciente por el médico autenticado.
+
+    Requiere JWT de médico.
+
+    Respuesta 200: lista de recetas (serialize).
+    Errores:
+        404 — paciente no encontrado.
+    """
+    doctor_id = int(get_jwt_identity())
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado"}), 404
+
+    prescriptions = (
+        Prescription.query
+        .filter_by(doctor_id=doctor_id, patient_id=patient_id)
+        .order_by(Prescription.created_at.desc())
+        .all()
+    )
+    return jsonify([p.serialize() for p in prescriptions]), 200
+
+
+# ── Historia Clínica ─────────────────────────────────────────────────────────
+
+@api.route('/clinical-record', methods=['POST'])
+@jwt_required()
+def create_clinical_record():
+    """
+    Crea una entrada en la historia clínica de un paciente.
+
+    Requiere JWT de médico.
+
+    Body JSON:
+        appointment_id (int) : ID de la cita completada.
+        reason         (str) : Motivo de la consulta (opcional).
+        diagnosis      (str) : Diagnóstico (opcional).
+        notes          (str) : Observaciones adicionales (opcional).
+
+    Respuesta 201: registro creado.
+    Errores:
+        400 — appointment_id faltante o cita ya tiene registro.
+        403 — la cita no pertenece a este médico.
+        404 — cita no encontrada.
+        422 — la cita no está completada.
+    """
+    doctor_id = int(get_jwt_identity())
+    data = request.get_json()
+
+    appointment_id = data.get("appointment_id")
+    if not appointment_id:
+        return jsonify({"error": "appointment_id es requerido."}), 400
+
+    appointment = Appointment.query.get(appointment_id)
+    if not appointment:
+        return jsonify({"error": "Cita no encontrada."}), 404
+
+    if appointment.doctor_id != doctor_id:
+        return jsonify({"error": "No tienes permiso sobre esta cita."}), 403
+
+    if appointment.status != "Completed":
+        return jsonify({"error": "Solo se pueden registrar notas en citas completadas."}), 422
+
+    existing = ClinicalRecord.query.filter_by(appointment_id=appointment_id).first()
+    if existing:
+        return jsonify({"error": "Esta cita ya tiene una entrada clínica registrada."}), 400
+
+    reason    = (data.get("reason",    "") or "").strip() or None
+    diagnosis = (data.get("diagnosis", "") or "").strip() or None
+    notes     = (data.get("notes",     "") or "").strip() or None
+
+    record = ClinicalRecord.create(
+        doctor_id=doctor_id,
+        patient_id=appointment.patient_id,
+        appointment_id=appointment_id,
+        reason=reason,
+        diagnosis=diagnosis,
+        notes=notes,
+    )
+    return jsonify(record.serialize()), 201
+
+
+@api.route('/patient/<int:patient_id>/clinical-records', methods=['GET'])
+@jwt_required()
+def get_patient_clinical_records(patient_id):
+    """
+    Retorna la historia clínica de un paciente escrita por el médico autenticado.
+
+    Requiere JWT de médico.
+
+    Respuesta 200: lista de registros, ordenados de más reciente a más antiguo.
+    Errores:
+        404 — paciente no encontrado.
+    """
+    doctor_id = int(get_jwt_identity())
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado."}), 404
+
+    records = (
+        ClinicalRecord.query
+        .filter_by(doctor_id=doctor_id, patient_id=patient_id)
+        .order_by(ClinicalRecord.created_at.desc())
+        .all()
+    )
+    return jsonify([r.serialize() for r in records]), 200
 
 
 # ── Centros ───────────────────────────────────────────────────────────────────

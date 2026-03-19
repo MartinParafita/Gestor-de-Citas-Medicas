@@ -24,6 +24,22 @@ class User(db.Model):
 
 
 class Patient(db.Model):
+    """
+    Representa a un paciente registrado en el sistema.
+
+    Campos:
+        id            (int)  : Clave primaria.
+        email         (str)  : Email único del paciente.
+        first_name    (str)  : Nombre.
+        last_name     (str)  : Apellido.
+        birth_date    (date) : Fecha de nacimiento.
+        password      (str)  : Contraseña hasheada con bcrypt.
+        assign_doctor (int)  : FK al médico asignado (puede ser None).
+        is_active     (bool) : Soft-delete; False = cuenta desactivada.
+
+    Relaciones:
+        appointments : lista de Appointment asociados a este paciente.
+    """
     __tablename__ = "patients"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -99,6 +115,24 @@ class Patient(db.Model):
     
 
 class Doctor(db.Model):
+    """
+    Representa a un médico registrado en el sistema.
+
+    Campos:
+        id         (int)  : Clave primaria.
+        email      (str)  : Email único del médico.
+        first_name (str)  : Nombre.
+        last_name  (str)  : Apellido.
+        specialty  (str)  : Especialidad médica (ej: "Cardiología").
+        center_id  (int)  : FK al centro médico donde trabaja.
+        work_days  (int)  : Días laborables por semana (1-7).
+        is_active  (bool) : Soft-delete; False = cuenta desactivada.
+        password   (str)  : Contraseña hasheada con bcrypt.
+
+    Relaciones:
+        center       : Center al que pertenece el médico.
+        appointments : lista de Appointment asignados a este médico.
+    """
     __tablename__ = "doctors"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -179,6 +213,22 @@ class Doctor(db.Model):
     
 
 class Appointment(db.Model):
+    """
+    Representa una cita médica entre un paciente y un médico.
+
+    Campos:
+        id               (int)      : Clave primaria.
+        doctor_id        (int)      : FK al médico asignado.
+        patient_id       (int)      : FK al paciente.
+        center_id        (int)      : FK al centro médico donde se realiza.
+        appointment_date (datetime) : Fecha y hora de la cita.
+        status           (str)      : Estado — "Pending" | "Completed" | "Cancelled".
+
+    Relaciones:
+        doctor  : Doctor asignado.
+        patient : Patient que asiste.
+        center  : Center donde se realiza la cita.
+    """
     __tablename__ = "appointments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -238,7 +288,151 @@ class Appointment(db.Model):
         db.session.commit()
         return self
 
+class Prescription(db.Model):
+    """
+    Representa una receta médica emitida por un médico a un paciente.
+
+    Las recetas son de solo escritura: una vez creadas no pueden editarse.
+    Al crearlas, el sistema intenta enviarlas por email al paciente
+    (requiere MAIL_USERNAME y MAIL_PASSWORD en .env).
+
+    Campos:
+        id           (int)      : Clave primaria.
+        doctor_id    (int)      : FK al médico que emite la receta.
+        patient_id   (int)      : FK al paciente destinatario.
+        medication   (str)      : Nombre del medicamento.
+        dosage       (str)      : Dosis indicada.
+        instructions (str|None) : Instrucciones opcionales de toma.
+        created_at   (datetime) : Fecha y hora de creación (UTC).
+
+    Relaciones:
+        doctor  : Doctor que emitió la receta.
+        patient : Patient destinatario.
+    """
+    __tablename__ = "prescriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False, index=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    medication: Mapped[str] = mapped_column(String(255), nullable=False)
+    dosage: Mapped[str] = mapped_column(String(255), nullable=False)
+    instructions: Mapped[str] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    doctor: Mapped["Doctor"] = relationship("Doctor")
+    patient: Mapped["Patient"] = relationship("Patient")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "doctor_id": self.doctor_id,
+            "patient_id": self.patient_id,
+            "medication": self.medication,
+            "dosage": self.dosage,
+            "instructions": self.instructions,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "doctor_name": f"{self.doctor.first_name} {self.doctor.last_name}" if self.doctor else None,
+            "patient_name": f"{self.patient.first_name} {self.patient.last_name}" if self.patient else None,
+        }
+
+    @classmethod
+    def create(cls, doctor_id, patient_id, medication, dosage, instructions=None):
+        new_prescription = cls(
+            doctor_id=doctor_id,
+            patient_id=patient_id,
+            medication=medication,
+            dosage=dosage,
+            instructions=instructions,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(new_prescription)
+        db.session.commit()
+        return new_prescription
+
+
+class ClinicalRecord(db.Model):
+    """
+    Representa una entrada en la historia clínica de un paciente.
+
+    Cada entrada está vinculada a una cita completada (appointment_id es único),
+    de modo que solo puede existir un registro clínico por cita.
+    Los registros son de solo escritura: una vez creados no pueden editarse.
+
+    Campos:
+        id             (int)      : Clave primaria.
+        doctor_id      (int)      : FK al médico que redactó la entrada.
+        patient_id     (int)      : FK al paciente.
+        appointment_id (int)      : FK a la cita completada (unique — un registro por cita).
+        reason         (str|None) : Motivo de consulta.
+        diagnosis      (str|None) : Diagnóstico del médico.
+        notes          (str|None) : Observaciones adicionales.
+        created_at     (datetime) : Fecha y hora de creación (UTC).
+
+    Relaciones:
+        doctor      : Doctor que redactó la entrada.
+        patient     : Patient al que pertenece la historia.
+        appointment : Appointment al que está vinculada la entrada.
+    """
+    __tablename__ = "clinical_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False, index=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    appointment_id: Mapped[int] = mapped_column(Integer, ForeignKey("appointments.id"), nullable=False, unique=True)
+    reason: Mapped[str] = mapped_column(String(500), nullable=True)
+    diagnosis: Mapped[str] = mapped_column(String(500), nullable=True)
+    notes: Mapped[str] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    doctor: Mapped["Doctor"] = relationship("Doctor")
+    patient: Mapped["Patient"] = relationship("Patient")
+    appointment: Mapped["Appointment"] = relationship("Appointment")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "doctor_id": self.doctor_id,
+            "patient_id": self.patient_id,
+            "appointment_id": self.appointment_id,
+            "reason": self.reason,
+            "diagnosis": self.diagnosis,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "doctor_name": f"{self.doctor.first_name} {self.doctor.last_name}" if self.doctor else None,
+            "appointment_date": self.appointment.appointment_date.isoformat() if self.appointment and self.appointment.appointment_date else None,
+        }
+
+    @classmethod
+    def create(cls, doctor_id, patient_id, appointment_id, reason=None, diagnosis=None, notes=None):
+        record = cls(
+            doctor_id=doctor_id,
+            patient_id=patient_id,
+            appointment_id=appointment_id,
+            reason=reason,
+            diagnosis=diagnosis,
+            notes=notes,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(record)
+        db.session.commit()
+        return record
+
+
 class Center(db.Model):
+    """
+    Representa un centro médico o clínica.
+
+    Campos:
+        id          (int) : Clave primaria.
+        name        (str) : Nombre del centro.
+        address     (str) : Dirección física.
+        zip_code    (str) : Código postal.
+        phone       (str) : Teléfono de contacto.
+        type_center (str) : Tipo de centro (ej: "Hospital", "Clínica").
+
+    Relaciones:
+        doctors : lista de Doctor que trabajan en este centro.
+    """
     __tablename__ = "centers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

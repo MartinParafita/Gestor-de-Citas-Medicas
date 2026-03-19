@@ -2,10 +2,15 @@ const BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Recupera el JWT almacenado en localStorage tras el login. */
 function getToken() {
     return localStorage.getItem("jwt_token");
 }
 
+/**
+ * Construye los headers HTTP con autenticación JWT y Content-Type JSON.
+ * Debe usarse en todas las peticiones a endpoints protegidos.
+ */
 function authHeaders() {
     return {
         "Content-Type": "application/json",
@@ -13,6 +18,11 @@ function authHeaders() {
     };
 }
 
+/**
+ * Procesa la respuesta de la API y la normaliza.
+ * @param {Response} response - Objeto Response de fetch.
+ * @returns {{ success: boolean, data?: any, message?: string }}
+ */
 async function handleResponse(response) {
     const data = await response.json();
     if (!response.ok) {
@@ -23,12 +33,17 @@ async function handleResponse(response) {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Dispatcher de registro: delega a registerPatient o registerDoctor según el rol.
+ * @param {Object} userData - Datos del usuario. Debe incluir `role` ("paciente"|"doctor").
+ */
 export async function register(userData) {
     if (userData.role === "paciente") return registerPatient(userData);
     if (userData.role === "doctor")   return registerDoctor(userData);
     return { success: false, message: "Rol no válido" };
 }
 
+/** Registra un nuevo paciente en el sistema. */
 export async function registerPatient(userData) {
     try {
         const response = await fetch(`${BASE}/api/register/patient`, {
@@ -42,6 +57,7 @@ export async function registerPatient(userData) {
     }
 }
 
+/** Registra un nuevo médico en el sistema. */
 export async function registerDoctor(userData) {
     try {
         const response = await fetch(`${BASE}/api/register/doctor`, {
@@ -55,6 +71,13 @@ export async function registerDoctor(userData) {
     }
 }
 
+/**
+ * Autentica al usuario, almacena el JWT en localStorage y carga el perfil.
+ * @param {string} email
+ * @param {string} password
+ * @param {string} role - "paciente" | "doctor"
+ * @returns {{ success: boolean, token?: string, role?: string, user?: Object, message?: string }}
+ */
 export async function loginUser(email, password, role) {
     const roleMap = { paciente: "patient", doctor: "doctor" };
     const apiRole = roleMap[role] ?? role;
@@ -81,6 +104,11 @@ export async function loginUser(email, password, role) {
     }
 }
 
+/**
+ * Carga el perfil del usuario autenticado desde el endpoint protegido.
+ * Si no se pasa role, lo lee de localStorage.
+ * @param {string} [role] - "paciente" | "doctor"
+ */
 export async function getProfile(role) {
     try {
         const raw = role || localStorage.getItem("user_role");
@@ -152,6 +180,7 @@ export async function updateDoctorProfile(data) {
 
 // ── Citas ─────────────────────────────────────────────────────────────────────
 
+/** Retorna todas las citas del paciente autenticado. */
 export async function getMyAppointments() {
     try {
         const response = await fetch(`${BASE}/api/appointments/patient`, {
@@ -163,6 +192,7 @@ export async function getMyAppointments() {
     }
 }
 
+/** Retorna todas las citas del médico autenticado. */
 export async function getMyAppointmentsDoctor() {
     try {
         const response = await fetch(`${BASE}/api/appointments/doctor`, {
@@ -195,6 +225,10 @@ export async function completeAppointment(appointmentId) {
     }
 }
 
+/**
+ * Crea una nueva cita médica para el paciente autenticado.
+ * @param {{ doctor_id: number, center_id: number, appointment_date: string }} params
+ */
 export async function createAppointmentAPI({ doctor_id, center_id, appointment_date }) {
     try {
         const response = await fetch(`${BASE}/api/appointment`, {
@@ -208,6 +242,10 @@ export async function createAppointmentAPI({ doctor_id, center_id, appointment_d
     }
 }
 
+/**
+ * Cancela una cita. Solo el paciente dueño de la cita puede llamar esto.
+ * @param {number} appointment_id
+ */
 export async function cancelAppointmentAPI(appointment_id) {
     try {
         const response = await fetch(`${BASE}/api/appointment/${appointment_id}/cancel`, {
@@ -220,6 +258,11 @@ export async function cancelAppointmentAPI(appointment_id) {
     }
 }
 
+/**
+ * Reagenda una cita existente a una nueva fecha/hora.
+ * @param {number} appointment_id
+ * @param {string} appointment_date - Nueva fecha en formato "DD-MM-YYYY HH:mm".
+ */
 export async function rescheduleAppointmentAPI(appointment_id, appointment_date) {
     try {
         const response = await fetch(`${BASE}/api/appointment/${appointment_id}`, {
@@ -235,6 +278,7 @@ export async function rescheduleAppointmentAPI(appointment_id, appointment_date)
 
 // ── Médicos y Centros ─────────────────────────────────────────────────────────
 
+/** Retorna la lista pública de todos los médicos (no requiere autenticación). */
 export async function getDoctors() {
     try {
         const response = await fetch(`${BASE}/api/doctors`);
@@ -260,6 +304,85 @@ export async function getMyPatients() {
     }
 }
 
+/** Retorna todas las recetas del paciente autenticado (de cualquier médico), más recientes primero. */
+export async function getMyPrescriptions() {
+    try {
+        const response = await fetch(`${BASE}/api/my/prescriptions`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Crea una receta médica para un paciente. Solo médicos autenticados.
+ * Intenta enviar un email al paciente si hay credenciales configuradas en el backend.
+ * @param {{ patient_id: number, medication: string, dosage: string, instructions?: string }} data
+ */
+export async function createPrescription(data) {
+    try {
+        const response = await fetch(`${BASE}/api/prescription`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify(data),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Retorna las recetas que el médico autenticado ha emitido para un paciente específico.
+ * @param {number} patientId
+ */
+export async function getPatientPrescriptions(patientId) {
+    try {
+        const response = await fetch(`${BASE}/api/patient/${patientId}/prescriptions`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Crea una entrada en la historia clínica de un paciente. Solo médicos autenticados.
+ * La cita referenciada debe estar en estado "Completed" y no tener registro previo.
+ * @param {{ appointment_id: number, reason?: string, diagnosis?: string, notes?: string }} data
+ */
+export async function createClinicalRecord(data) {
+    try {
+        const response = await fetch(`${BASE}/api/clinical-record`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify(data),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Retorna la historia clínica escrita por el médico autenticado para un paciente.
+ * @param {number} patientId
+ */
+export async function getPatientClinicalRecords(patientId) {
+    try {
+        const response = await fetch(`${BASE}/api/patient/${patientId}/clinical-records`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/** Retorna la lista pública de todos los centros médicos (no requiere autenticación). */
 export async function getCenters() {
     try {
         const response = await fetch(`${BASE}/api/centers`);
