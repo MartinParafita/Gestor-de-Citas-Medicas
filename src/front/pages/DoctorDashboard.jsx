@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useGlobalReducer from '../hooks/useGlobalReducer';
-import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment, getMyPatients } from '../services/fetch';
+import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment, getMyPatients, createPrescription, getPatientPrescriptions, createClinicalRecord, getPatientClinicalRecords } from '../services/fetch';
 import '../css/DoctorDashboard.css';
 
 // ── Helpers de estado ─────────────────────────────────────────────────────────
@@ -130,6 +130,15 @@ const AgendaHoy = ({ appointments, onComplete }) => {
 
 // ── Vista: Historial de citas ─────────────────────────────────────────────────
 
+/**
+ * HistorialCitas (Doctor)
+ *
+ * Muestra todas las citas del médico ordenadas de más reciente a más antigua.
+ * Las citas canceladas aparecen con opacidad reducida.
+ *
+ * Props:
+ *   appointments {Array} - Lista completa de citas del médico.
+ */
 const HistorialCitas = ({ appointments }) => {
     const sorted = [...appointments].sort((a, b) => new Date(b.appointment_date) - new Date(a.appointment_date));
 
@@ -176,11 +185,116 @@ const HistorialCitas = ({ appointments }) => {
  *   patient      {Object}   - Datos del paciente.
  *   appointments {Array}    - Citas del médico filtradas por este paciente.
  *   onBack       {Function} - Callback para volver a la lista.
+ *
+ * Secciones que muestra:
+ *   1. Datos personales del paciente (solo lectura).
+ *   2. Historial de citas con este médico.
+ *   3. Prescripciones emitidas por este médico al paciente (write-once, con email opcional).
+ *   4. Historia clínica: entradas vinculadas a citas completadas (write-once, una por cita).
  */
 const FichaPaciente = ({ patient, appointments, onBack }) => {
     const citasOrdenadas = [...appointments].sort(
         (a, b) => new Date(b.appointment_date) - new Date(a.appointment_date)
     );
+
+    // ── Estado de historia clínica ─────────────────────────────────────────────
+    const [clinicalRecords, setClinicalRecords] = useState([]);
+    const [loadingCr, setLoadingCr]             = useState(true);
+    const [showCrForm, setShowCrForm]           = useState(false);
+    const [selectedApptId, setSelectedApptId]   = useState('');
+    const [crReason, setCrReason]               = useState('');
+    const [crDiagnosis, setCrDiagnosis]         = useState('');
+    const [crNotes, setCrNotes]                 = useState('');
+    const [savingCr, setSavingCr]               = useState(false);
+    const [crError, setCrError]                 = useState('');
+    const [crSuccess, setCrSuccess]             = useState('');
+
+    // ── Estado de prescripciones ───────────────────────────────────────────────
+    const [prescriptions, setPrescriptions] = useState([]);
+    const [loadingRx, setLoadingRx]         = useState(true);
+    const [rxError, setRxError]             = useState('');
+
+    // ── Formulario nueva receta ────────────────────────────────────────────────
+    const [medication, setMedication]     = useState('');
+    const [dosage, setDosage]             = useState('');
+    const [instructions, setInstructions] = useState('');
+    const [savingRx, setSavingRx]         = useState(false);
+    const [rxSuccess, setRxSuccess]       = useState('');
+    const [showForm, setShowForm]         = useState(false);
+
+    useEffect(() => {
+        const load = async () => {
+            const [rxResult, crResult] = await Promise.all([
+                getPatientPrescriptions(patient.id),
+                getPatientClinicalRecords(patient.id),
+            ]);
+            if (rxResult.success) setPrescriptions(rxResult.data);
+            if (crResult.success) setClinicalRecords(crResult.data);
+            setLoadingRx(false);
+            setLoadingCr(false);
+        };
+        load();
+    }, [patient.id]);
+
+    const handleCreateClinicalRecord = async (e) => {
+        e.preventDefault();
+        setCrError('');
+        setCrSuccess('');
+        setSavingCr(true);
+        const result = await createClinicalRecord({
+            appointment_id: Number(selectedApptId),
+            reason: crReason,
+            diagnosis: crDiagnosis,
+            notes: crNotes,
+        });
+        setSavingCr(false);
+        if (result.success) {
+            setClinicalRecords(prev => [result.data, ...prev]);
+            setSelectedApptId('');
+            setCrReason('');
+            setCrDiagnosis('');
+            setCrNotes('');
+            setShowCrForm(false);
+            setCrSuccess('✅ Entrada clínica registrada correctamente.');
+            setTimeout(() => setCrSuccess(''), 5000);
+        } else {
+            setCrError(result.message || 'Error al guardar la entrada clínica.');
+        }
+    };
+
+    const handleCreatePrescription = async (e) => {
+        e.preventDefault();
+        setRxError('');
+        setRxSuccess('');
+        setSavingRx(true);
+        const result = await createPrescription({
+            patient_id: patient.id,
+            medication,
+            dosage,
+            instructions,
+        });
+        setSavingRx(false);
+        if (result.success) {
+            setPrescriptions(prev => [result.data, ...prev]);
+            setMedication('');
+            setDosage('');
+            setInstructions('');
+            setShowForm(false);
+            setRxSuccess(
+                result.data.email_sent
+                    ? '✅ Receta guardada y enviada por email al paciente.'
+                    : '✅ Receta guardada. (Email no configurado, no se envió.)'
+            );
+            setTimeout(() => setRxSuccess(''), 5000);
+        } else {
+            setRxError(result.message || 'Error al guardar la receta.');
+        }
+    };
+
+    const inputStyle = {
+        display: 'block', width: '100%', marginTop: '6px',
+        padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box',
+    };
 
     return (
         <div className="cita-container">
@@ -188,13 +302,8 @@ const FichaPaciente = ({ patient, appointments, onBack }) => {
             <button
                 onClick={onBack}
                 style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#007bff',
-                    cursor: 'pointer',
-                    fontSize: '15px',
-                    marginBottom: '16px',
-                    padding: 0,
+                    background: 'none', border: 'none', color: '#20B2AA',
+                    cursor: 'pointer', fontSize: '15px', marginBottom: '16px', padding: 0,
                 }}
             >
                 ← Volver a la lista
@@ -241,10 +350,254 @@ const FichaPaciente = ({ patient, appointments, onBack }) => {
             )}
 
             {/* Prescripciones */}
-            <h3 style={{ marginTop: '28px', marginBottom: '12px' }}>✍️ Prescripciones</h3>
-            <div className="appointment-view gestion-item" style={{ color: '#888', fontStyle: 'italic' }}>
-                Próximamente — esta sección mostrará las recetas emitidas para este paciente.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '28px', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0 }}>✍️ Prescripciones</h3>
+                <button
+                    onClick={() => { setShowForm(f => !f); setRxError(''); setRxSuccess(''); }}
+                    style={{
+                        padding: '5px 12px', backgroundColor: showForm ? '#6c757d' : '#20B2AA',
+                        color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+                    }}
+                >
+                    {showForm ? 'Cancelar' : '+ Nueva receta'}
+                </button>
             </div>
+
+            {rxSuccess && <p style={{ color: '#2e7d32', marginBottom: '12px' }}>{rxSuccess}</p>}
+
+            {/* Formulario nueva receta */}
+            {showForm && (
+                <form
+                    onSubmit={handleCreatePrescription}
+                    style={{
+                        background: '#f0fafa', border: '1px solid #b2e4e1',
+                        borderRadius: '8px', padding: '20px', marginBottom: '20px',
+                    }}
+                >
+                    <h4 style={{ margin: '0 0 16px', color: '#20B2AA' }}>Nueva receta para {patient.first_name} {patient.last_name}</h4>
+
+                    <div style={{ marginBottom: '12px' }}>
+                        <label><strong>Medicamento *</strong></label>
+                        <input
+                            type="text"
+                            value={medication}
+                            onChange={e => setMedication(e.target.value)}
+                            placeholder="Ej: Ibuprofeno 400mg"
+                            required
+                            style={inputStyle}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '12px' }}>
+                        <label><strong>Dosis *</strong></label>
+                        <input
+                            type="text"
+                            value={dosage}
+                            onChange={e => setDosage(e.target.value)}
+                            placeholder="Ej: 1 comprimido cada 8 horas"
+                            required
+                            style={inputStyle}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                        <label><strong>Instrucciones</strong> <span style={{ color: '#888', fontWeight: 'normal' }}>(opcional)</span></label>
+                        <textarea
+                            value={instructions}
+                            onChange={e => setInstructions(e.target.value)}
+                            placeholder="Ej: Tomar con las comidas durante 5 días."
+                            rows={3}
+                            style={{ ...inputStyle, resize: 'vertical' }}
+                        />
+                    </div>
+
+                    {rxError && <p style={{ color: 'red', marginBottom: '12px' }}>{rxError}</p>}
+
+                    <button
+                        type="submit"
+                        disabled={savingRx}
+                        style={{
+                            padding: '8px 20px', backgroundColor: savingRx ? '#aaa' : '#20B2AA',
+                            color: 'white', border: 'none', borderRadius: '6px',
+                            cursor: savingRx ? 'not-allowed' : 'pointer', fontWeight: '600',
+                        }}
+                    >
+                        {savingRx ? 'Guardando...' : 'Emitir receta'}
+                    </button>
+                </form>
+            )}
+
+            {/* Lista de recetas existentes */}
+            {loadingRx ? (
+                <p style={{ color: '#888' }}>Cargando recetas...</p>
+            ) : prescriptions.length === 0 ? (
+                <div className="appointment-view gestion-item" style={{ color: '#888', fontStyle: 'italic' }}>
+                    No hay recetas emitidas para este paciente.
+                </div>
+            ) : (
+                prescriptions.map((rx) => {
+                    const fecha = rx.created_at ? new Date(rx.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+                    return (
+                        <div
+                            key={rx.id}
+                            className="appointment-view gestion-item"
+                            style={{ marginBottom: '10px', borderLeft: '4px solid #20B2AA' }}
+                        >
+                            <div className="details-grid">
+                                <span><strong>Fecha:</strong> {fecha}</span>
+                                <span><strong>Medicamento:</strong> {rx.medication}</span>
+                                <span><strong>Dosis:</strong> {rx.dosage}</span>
+                                {rx.instructions && (
+                                    <span><strong>Instrucciones:</strong> {rx.instructions}</span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })
+            )}
+
+            {/* Historia Clínica */}
+            {(() => {
+                const recordedApptIds = new Set(clinicalRecords.map(r => r.appointment_id));
+                const completedWithoutRecord = citasOrdenadas.filter(
+                    c => c.status === 'Completed' && !recordedApptIds.has(c.id)
+                );
+                return (
+                    <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '28px', marginBottom: '12px' }}>
+                            <h3 style={{ margin: 0 }}>📋 Historia Clínica</h3>
+                            {completedWithoutRecord.length > 0 && (
+                                <button
+                                    onClick={() => { setShowCrForm(f => !f); setCrError(''); setCrSuccess(''); }}
+                                    style={{
+                                        padding: '5px 12px',
+                                        backgroundColor: showCrForm ? '#6c757d' : '#20B2AA',
+                                        color: 'white', border: 'none', borderRadius: '6px',
+                                        cursor: 'pointer', fontSize: '13px',
+                                    }}
+                                >
+                                    {showCrForm ? 'Cancelar' : '+ Nueva entrada'}
+                                </button>
+                            )}
+                        </div>
+
+                        {crSuccess && <p style={{ color: '#2e7d32', marginBottom: '12px' }}>{crSuccess}</p>}
+
+                        {showCrForm && (
+                            <form
+                                onSubmit={handleCreateClinicalRecord}
+                                style={{
+                                    background: '#f0fafa', border: '1px solid #b2e4e1',
+                                    borderRadius: '8px', padding: '20px', marginBottom: '20px',
+                                }}
+                            >
+                                <h4 style={{ margin: '0 0 16px', color: '#20B2AA' }}>
+                                    Nueva entrada clínica — {patient.first_name} {patient.last_name}
+                                </h4>
+
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label><strong>Cita *</strong></label>
+                                    <select
+                                        value={selectedApptId}
+                                        onChange={e => setSelectedApptId(e.target.value)}
+                                        required
+                                        style={{ ...inputStyle }}
+                                    >
+                                        <option value="">— Selecciona una cita —</option>
+                                        {completedWithoutRecord.map(c => {
+                                            const d = new Date(c.appointment_date);
+                                            return (
+                                                <option key={c.id} value={c.id}>
+                                                    {d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })} {d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                </div>
+
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label><strong>Motivo de consulta</strong> <span style={{ color: '#888', fontWeight: 'normal' }}>(opcional)</span></label>
+                                    <textarea
+                                        value={crReason}
+                                        onChange={e => setCrReason(e.target.value)}
+                                        placeholder="Ej: Dolor de cabeza persistente."
+                                        rows={2}
+                                        style={{ ...inputStyle, resize: 'vertical' }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label><strong>Diagnóstico</strong> <span style={{ color: '#888', fontWeight: 'normal' }}>(opcional)</span></label>
+                                    <textarea
+                                        value={crDiagnosis}
+                                        onChange={e => setCrDiagnosis(e.target.value)}
+                                        placeholder="Ej: Migraña tensional."
+                                        rows={2}
+                                        style={{ ...inputStyle, resize: 'vertical' }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '16px' }}>
+                                    <label><strong>Observaciones</strong> <span style={{ color: '#888', fontWeight: 'normal' }}>(opcional)</span></label>
+                                    <textarea
+                                        value={crNotes}
+                                        onChange={e => setCrNotes(e.target.value)}
+                                        placeholder="Ej: Paciente refiere mejoría con reposo. Se indica seguimiento en 2 semanas."
+                                        rows={3}
+                                        style={{ ...inputStyle, resize: 'vertical' }}
+                                    />
+                                </div>
+
+                                {crError && <p style={{ color: 'red', marginBottom: '12px' }}>{crError}</p>}
+
+                                <button
+                                    type="submit"
+                                    disabled={savingCr || !selectedApptId}
+                                    style={{
+                                        padding: '8px 20px',
+                                        backgroundColor: (savingCr || !selectedApptId) ? '#aaa' : '#20B2AA',
+                                        color: 'white', border: 'none', borderRadius: '6px',
+                                        cursor: (savingCr || !selectedApptId) ? 'not-allowed' : 'pointer',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    {savingCr ? 'Guardando...' : 'Guardar entrada'}
+                                </button>
+                            </form>
+                        )}
+
+                        {loadingCr ? (
+                            <p style={{ color: '#888' }}>Cargando historia clínica...</p>
+                        ) : clinicalRecords.length === 0 ? (
+                            <div className="appointment-view gestion-item" style={{ color: '#888', fontStyle: 'italic' }}>
+                                No hay entradas clínicas registradas para este paciente.
+                            </div>
+                        ) : (
+                            clinicalRecords.map((cr) => {
+                                const fecha = cr.appointment_date
+                                    ? new Date(cr.appointment_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+                                    : cr.created_at
+                                        ? new Date(cr.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+                                        : '—';
+                                return (
+                                    <div
+                                        key={cr.id}
+                                        className="appointment-view gestion-item"
+                                        style={{ marginBottom: '10px', borderLeft: '4px solid #6c757d' }}
+                                    >
+                                        <div className="details-grid">
+                                            <span><strong>Cita:</strong> {fecha}</span>
+                                            {cr.reason    && <span><strong>Motivo:</strong> {cr.reason}</span>}
+                                            {cr.diagnosis && <span><strong>Diagnóstico:</strong> {cr.diagnosis}</span>}
+                                            {cr.notes     && <span><strong>Observaciones:</strong> {cr.notes}</span>}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </>
+                );
+            })()}
         </div>
     );
 };
@@ -317,7 +670,7 @@ const MisPacientes = ({ patients, appointments, loading }) => {
                             style={{
                                 marginLeft: '16px',
                                 padding: '6px 14px',
-                                backgroundColor: '#17a2b8',
+                                backgroundColor: '#20B2AA',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
@@ -533,7 +886,7 @@ const doctorMenuData = [
         ],
     },
     { title: '2. Información de pacientes', icon: '📄', links: [{ name: 'Mis pacientes', view: 'mis-pacientes' }] },
-    { title: '3. Prescripciones', icon: '✍️', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '3. Prescripciones', icon: '✍️', links: [{ name: 'Ver recetas por paciente', view: 'mis-pacientes' }] },
     { title: '4. Comunicación', icon: '💬', links: [{ name: 'Próximamente', view: 'placeholder' }] },
     { title: '5. Reportes y estadísticas', icon: '📈', links: [{ name: 'Próximamente', view: 'placeholder' }] },
     {
@@ -545,6 +898,25 @@ const doctorMenuData = [
 
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
+/**
+ * DoctorDashboard
+ *
+ * Componente raíz del panel del médico. Gestiona:
+ *   - Carga inicial de citas al montar.
+ *   - Carga lazy de pacientes (solo cuando se navega a "mis-pacientes").
+ *   - Estado de navegación entre vistas (currentView).
+ *   - Menú lateral en acordeón (doctorMenuData).
+ *   - Botones de acceso rápido para las acciones más frecuentes.
+ *   - Sincronización del store global al guardar el perfil.
+ *
+ * Vistas disponibles:
+ *   "welcome"          → Resumen del día (citas de hoy y total activas).
+ *   "agenda-hoy"       → AgendaHoy (citas de hoy y próximas + marcar como completada).
+ *   "historial-citas"  → HistorialCitas (todas las citas del médico).
+ *   "mis-pacientes"    → MisPacientes → FichaPaciente (detalle con recetas e historia clínica).
+ *   "perfil"           → PerfilMedico (editar email, especialidad, días de trabajo y contraseña).
+ *   "placeholder"      → Vista temporal para secciones en desarrollo.
+ */
 const DoctorDashboard = () => {
     const { store, dispatch } = useGlobalReducer();
     const [currentView, setCurrentView]     = useState('welcome');
@@ -699,7 +1071,7 @@ const DoctorDashboard = () => {
                     </button>
                     <button
                         className="quick-button"
-                        style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}
+                        style={{ backgroundColor: '#20B2AA', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}
                         onClick={() => setCurrentView('mis-pacientes')}
                     >
                         <span className="button-icon">👥</span> Mis pacientes
