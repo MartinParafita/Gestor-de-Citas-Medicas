@@ -56,8 +56,10 @@ export async function registerDoctor(userData) {
 }
 
 export async function loginUser(email, password, role) {
+    const roleMap = { paciente: "patient", doctor: "doctor" };
+    const apiRole = roleMap[role] ?? role;
     try {
-        const response = await fetch(`${BASE}/api/login/${role}`, {
+        const response = await fetch(`${BASE}/api/login/${apiRole}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password }),
@@ -81,9 +83,66 @@ export async function loginUser(email, password, role) {
 
 export async function getProfile(role) {
     try {
-        const roleParam = role || localStorage.getItem("user_role");
+        const raw = role || localStorage.getItem("user_role");
+        const roleMap = { paciente: "patient", doctor: "doctor" };
+        const roleParam = roleMap[raw] ?? raw;
         const response = await fetch(`${BASE}/api/protected/${roleParam}`, {
             headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+// ── Perfil ────────────────────────────────────────────────────────────────────
+
+/**
+ * Actualiza el perfil del paciente autenticado.
+ *
+ * El endpoint usa el JWT para identificar al paciente,
+ * por lo que no es necesario pasar el ID explícitamente.
+ *
+ * @param {Object} data - Campos a actualizar. Puede contener:
+ *   - email          {string}  Nuevo email.
+ *   - birth_date     {string}  Fecha en formato "YYYY-MM-DD".
+ *   - current_password {string} Contraseña actual (requerida para cambiar contraseña).
+ *   - new_password   {string}  Nueva contraseña (requerida para cambiar contraseña).
+ * @returns {{ success: boolean, data?: Object, message?: string }}
+ */
+export async function updatePatientProfile(data) {
+    try {
+        const response = await fetch(`${BASE}/api/profile/patient`, {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify(data),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Actualiza el perfil del médico autenticado.
+ *
+ * El endpoint usa el JWT para identificar al médico,
+ * por lo que no es necesario pasar el ID explícitamente.
+ *
+ * @param {Object} data - Campos a actualizar. Puede contener:
+ *   - email          {string}  Nuevo email.
+ *   - specialty      {string}  Nueva especialidad.
+ *   - work_days      {number}  Días de trabajo por semana (1-7).
+ *   - current_password {string} Contraseña actual (requerida para cambiar contraseña).
+ *   - new_password   {string}  Nueva contraseña (requerida para cambiar contraseña).
+ * @returns {{ success: boolean, data?: Object, message?: string }}
+ */
+export async function updateDoctorProfile(data) {
+    try {
+        const response = await fetch(`${BASE}/api/profile/doctor`, {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify(data),
         });
         return handleResponse(response);
     } catch {

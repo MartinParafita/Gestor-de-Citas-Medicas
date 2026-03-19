@@ -25,6 +25,7 @@ psycopg2 = "*"
 bcrypt = "*"
 flask = "*"
 flask-jwt-extended = "*"
+colorama = "*"
 
 [requires]
 python_version = "3.13"

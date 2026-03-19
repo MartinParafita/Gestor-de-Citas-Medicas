@@ -33,6 +33,12 @@ def register_patient():
     if Patient.query.filter_by(email=email).first():
         return jsonify({"msg": "Este usuario ya existe."}), 400
 
+    from datetime import date
+    try:
+        birth_date = date.fromisoformat(birth_date)
+    except ValueError:
+        return jsonify({"msg": "Formato de fecha inválido. Use YYYY-MM-DD."}), 400
+
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     new_patient = Patient.create(
         email=email,
@@ -84,6 +90,62 @@ def update_patient(patient_id):
         updates['email'] = data['email']
     if 'assign_doctor' in data:
         updates['assign_doctor'] = data['assign_doctor']
+
+    patient.update(**updates)
+    return jsonify(patient.serialize()), 200
+
+
+@api.route('/profile/patient', methods=['PUT'])
+@jwt_required()
+def update_patient_profile():
+    """
+    Actualiza el perfil del paciente autenticado.
+
+    Requiere JWT. Obtiene el ID del paciente desde el token,
+    por lo que un paciente solo puede editar su propio perfil.
+
+    Campos editables:
+        - email       (str)  : nuevo email (opcional).
+        - birth_date  (str)  : nueva fecha de nacimiento en formato YYYY-MM-DD (opcional).
+        - current_password (str) + new_password (str): para cambiar contraseña (ambos requeridos juntos).
+
+    Respuesta 200: datos del paciente actualizados (serialize).
+    Errores:
+        400 — faltan campos obligatorios para cambio de contraseña.
+        401 — contraseña actual incorrecta.
+        404 — paciente no encontrado.
+        409 — el nuevo email ya está en uso.
+    """
+    patient_id = int(get_jwt_identity())
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado"}), 404
+
+    data = request.get_json()
+    updates = {}
+
+    # ── Cambio de email ────────────────────────────────────────────────────────
+    if 'email' in data:
+        new_email = data['email'].strip().lower()
+        existing = Patient.query.filter_by(email=new_email).first()
+        if existing and existing.id != patient_id:
+            return jsonify({"error": "Ese email ya está en uso."}), 409
+        updates['email'] = new_email
+
+    # ── Cambio de fecha de nacimiento ──────────────────────────────────────────
+    if 'birth_date' in data:
+        from datetime import date
+        updates['birth_date'] = date.fromisoformat(data['birth_date'])
+
+    # ── Cambio de contraseña ───────────────────────────────────────────────────
+    if 'new_password' in data or 'current_password' in data:
+        current_pw = data.get('current_password', '')
+        new_pw     = data.get('new_password', '')
+        if not current_pw or not new_pw:
+            return jsonify({"error": "Se requieren current_password y new_password."}), 400
+        if not bcrypt.checkpw(current_pw.encode('utf-8'), patient.password.encode('utf-8')):
+            return jsonify({"error": "La contraseña actual es incorrecta."}), 401
+        updates['password'] = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     patient.update(**updates)
     return jsonify(patient.serialize()), 200
@@ -166,6 +228,69 @@ def protected_doctor():
     if not user:
         return jsonify({"msg": "Médico no encontrado"}), 404
     return jsonify(user.serialize()), 200
+
+
+@api.route('/profile/doctor', methods=['PUT'])
+@jwt_required()
+def update_doctor_profile():
+    """
+    Actualiza el perfil del médico autenticado.
+
+    Requiere JWT. Obtiene el ID del médico desde el token,
+    por lo que un médico solo puede editar su propio perfil.
+
+    Campos editables:
+        - email     (str) : nuevo email (opcional).
+        - specialty (str) : nueva especialidad (opcional).
+        - work_days (int) : días de trabajo por semana, entre 1 y 7 (opcional).
+        - current_password (str) + new_password (str): para cambiar contraseña (ambos requeridos juntos).
+
+    Respuesta 200: datos del médico actualizados (serialize).
+    Errores:
+        400 — work_days fuera de rango o faltan campos para cambio de contraseña.
+        401 — contraseña actual incorrecta.
+        404 — médico no encontrado.
+        409 — el nuevo email ya está en uso.
+    """
+    doctor_id = int(get_jwt_identity())
+    doctor = Doctor.query.get(doctor_id)
+    if not doctor:
+        return jsonify({"error": "Médico no encontrado"}), 404
+
+    data = request.get_json()
+    updates = {}
+
+    # ── Cambio de email ────────────────────────────────────────────────────────
+    if 'email' in data:
+        new_email = data['email'].strip().lower()
+        existing = Doctor.query.filter_by(email=new_email).first()
+        if existing and existing.id != doctor_id:
+            return jsonify({"error": "Ese email ya está en uso."}), 409
+        updates['email'] = new_email
+
+    # ── Cambio de especialidad ─────────────────────────────────────────────────
+    if 'specialty' in data:
+        updates['specialty'] = data['specialty'].strip()
+
+    # ── Cambio de días de trabajo ──────────────────────────────────────────────
+    if 'work_days' in data:
+        work_days = int(data['work_days'])
+        if not 1 <= work_days <= 7:
+            return jsonify({"error": "work_days debe estar entre 1 y 7."}), 400
+        updates['work_days'] = work_days
+
+    # ── Cambio de contraseña ───────────────────────────────────────────────────
+    if 'new_password' in data or 'current_password' in data:
+        current_pw = data.get('current_password', '')
+        new_pw     = data.get('new_password', '')
+        if not current_pw or not new_pw:
+            return jsonify({"error": "Se requieren current_password y new_password."}), 400
+        if not bcrypt.checkpw(current_pw.encode('utf-8'), doctor.password.encode('utf-8')):
+            return jsonify({"error": "La contraseña actual es incorrecta."}), 401
+        updates['password'] = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    doctor.update(**updates)
+    return jsonify(doctor.serialize()), 200
 
 
 @api.route('/doctor/<int:doctor_id>', methods=['PUT'])

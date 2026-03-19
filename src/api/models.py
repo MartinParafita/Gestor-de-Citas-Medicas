@@ -69,16 +69,26 @@ class Patient(db.Model):
         db.session.commit()
         return new_patient
     
-    def update(self, email=None, password=None, assign_doctor=None):
+    def update(self, email=None, password=None, assign_doctor=None, birth_date=None):
+        """
+        Actualiza los campos del paciente que se reciban como argumento.
+        Solo modifica los campos que no sean None.
+
+        Parámetros:
+            email       (str)  : nuevo email del paciente.
+            password    (str)  : nueva contraseña ya hasheada con bcrypt.
+            assign_doctor (int): ID del médico asignado.
+            birth_date  (date) : nueva fecha de nacimiento.
+        """
         if email is not None:
             self.email = email
-
         if password is not None:
             self.password = password
-
         if assign_doctor is not None:
             self.assign_doctor = assign_doctor
-        
+        if birth_date is not None:
+            self.birth_date = birth_date
+
         db.session.commit()
         return self.serialize()
     
@@ -140,7 +150,18 @@ class Doctor(db.Model):
         return new_doctor
     
 
-    def update(self, email=None, password=None, center_id=None, work_days=None):
+    def update(self, email=None, password=None, center_id=None, work_days=None, specialty=None):
+        """
+        Actualiza los campos del médico que se reciban como argumento.
+        Solo modifica los campos que no sean None.
+
+        Parámetros:
+            email     (str) : nuevo email del médico.
+            password  (str) : nueva contraseña ya hasheada con bcrypt.
+            center_id (int) : ID del centro médico asignado.
+            work_days (int) : días de trabajo por semana.
+            specialty (str) : especialidad médica.
+        """
         if email is not None:
             self.email = email
         if password is not None:
@@ -149,7 +170,9 @@ class Doctor(db.Model):
             self.work_days = work_days
         if center_id is not None:
             self.center_id = center_id
-        
+        if specialty is not None:
+            self.specialty = specialty
+
         db.session.commit()
         return self.serialize()
 
