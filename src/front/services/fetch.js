@@ -244,6 +244,22 @@ export async function getDoctors() {
     }
 }
 
+/**
+ * Retorna los pacientes únicos que tienen citas con el médico autenticado.
+ *
+ * @returns {{ success: boolean, data?: Array, message?: string }}
+ */
+export async function getMyPatients() {
+    try {
+        const response = await fetch(`${BASE}/api/doctor/patients`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
 export async function getCenters() {
     try {
         const response = await fetch(`${BASE}/api/centers`);
