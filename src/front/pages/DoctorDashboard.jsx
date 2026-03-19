@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useGlobalReducer from '../hooks/useGlobalReducer';
-import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment } from '../services/fetch';
+import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment, getMyPatients } from '../services/fetch';
 import '../css/DoctorDashboard.css';
 
 // ── Helpers de estado ─────────────────────────────────────────────────────────
@@ -161,6 +161,180 @@ const HistorialCitas = ({ appointments }) => {
         </div>
     );
 };
+
+// ── Vista: Ficha del paciente ─────────────────────────────────────────────────
+
+/**
+ * FichaPaciente
+ *
+ * Muestra el detalle completo de un paciente:
+ *   - Datos personales
+ *   - Historial de citas con este médico (ordenadas de más reciente a más antigua)
+ *   - Sección de prescripciones (próximamente)
+ *
+ * Props:
+ *   patient      {Object}   - Datos del paciente.
+ *   appointments {Array}    - Citas del médico filtradas por este paciente.
+ *   onBack       {Function} - Callback para volver a la lista.
+ */
+const FichaPaciente = ({ patient, appointments, onBack }) => {
+    const citasOrdenadas = [...appointments].sort(
+        (a, b) => new Date(b.appointment_date) - new Date(a.appointment_date)
+    );
+
+    return (
+        <div className="cita-container">
+            {/* Encabezado */}
+            <button
+                onClick={onBack}
+                style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#007bff',
+                    cursor: 'pointer',
+                    fontSize: '15px',
+                    marginBottom: '16px',
+                    padding: 0,
+                }}
+            >
+                ← Volver a la lista
+            </button>
+
+            <h2>📄 Ficha del paciente</h2>
+
+            {/* Datos personales */}
+            <div className="appointment-view gestion-item" style={{ marginBottom: '24px' }}>
+                <div className="details-grid">
+                    <span><strong>Nombre:</strong> {patient.first_name} {patient.last_name}</span>
+                    <span><strong>Email:</strong> {patient.email}</span>
+                    <span><strong>Fecha de nacimiento:</strong> {patient.birth_date}</span>
+                    <span><strong>Estado:</strong> {patient.is_active ? '✅ Activo' : '❌ Inactivo'}</span>
+                </div>
+            </div>
+
+            {/* Historial de citas */}
+            <h3 style={{ marginBottom: '12px' }}>📋 Historial de citas</h3>
+            {citasOrdenadas.length === 0 ? (
+                <p style={{ color: '#888' }}>Sin citas registradas con este paciente.</p>
+            ) : (
+                citasOrdenadas.map((cita) => {
+                    const d = cita.appointment_date ? new Date(cita.appointment_date) : null;
+                    return (
+                        <div
+                            key={cita.id}
+                            className="appointment-view gestion-item"
+                            style={{ opacity: cita.status === 'Cancelled' ? 0.6 : 1, marginBottom: '10px' }}
+                        >
+                            <div className="details-grid">
+                                <span><strong>Fecha:</strong> {d ? d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span>
+                                <span><strong>Hora:</strong> {d ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                                <span>
+                                    <strong>Estado:</strong>{' '}
+                                    <span style={{ color: STATUS_COLOR[cita.status] || 'gray' }}>
+                                        {STATUS_LABEL[cita.status] || cita.status}
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })
+            )}
+
+            {/* Prescripciones */}
+            <h3 style={{ marginTop: '28px', marginBottom: '12px' }}>✍️ Prescripciones</h3>
+            <div className="appointment-view gestion-item" style={{ color: '#888', fontStyle: 'italic' }}>
+                Próximamente — esta sección mostrará las recetas emitidas para este paciente.
+            </div>
+        </div>
+    );
+};
+
+
+// ── Vista: Mis Pacientes ──────────────────────────────────────────────────────
+
+/**
+ * MisPacientes
+ *
+ * Lista los pacientes únicos del médico. Al hacer click en "Ver ficha"
+ * muestra el componente FichaPaciente con el detalle completo del paciente.
+ *
+ * Props:
+ *   patients     {Array} - Lista de pacientes del backend.
+ *   appointments {Array} - Citas del médico (para estadísticas y ficha).
+ *   loading      {bool}  - Muestra spinner mientras se cargan los datos.
+ */
+const MisPacientes = ({ patients, appointments, loading }) => {
+    const [selectedPatient, setSelectedPatient] = useState(null);
+
+    if (loading) return <p style={{ color: '#888' }}>Cargando pacientes...</p>;
+
+    if (selectedPatient) {
+        const citasDelPaciente = appointments.filter(a => a.patient_id === selectedPatient.id);
+        return (
+            <FichaPaciente
+                patient={selectedPatient}
+                appointments={citasDelPaciente}
+                onBack={() => setSelectedPatient(null)}
+            />
+        );
+    }
+
+    if (patients.length === 0) {
+        return (
+            <div className="cita-container">
+                <h2>👥 Mis Pacientes</h2>
+                <p style={{ color: '#888' }}>Aún no tienes pacientes con citas registradas.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="cita-container">
+            <h2>👥 Mis Pacientes</h2>
+            <p style={{ color: '#888', marginBottom: '16px' }}>{patients.length} paciente(s) en tu lista.</p>
+
+            {patients.map((p) => {
+                const citasDelPaciente = appointments.filter(a => a.patient_id === p.id);
+                const pendientes = citasDelPaciente.filter(a => a.status === 'Pending').length;
+
+                return (
+                    <div key={p.id} className="appointment-view gestion-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="details-grid" style={{ flex: 1 }}>
+                            <span><strong>Nombre:</strong> {p.first_name} {p.last_name}</span>
+                            <span><strong>Email:</strong> {p.email}</span>
+                            <span>
+                                <strong>Citas:</strong>{' '}
+                                {citasDelPaciente.length} total
+                                {pendientes > 0 && (
+                                    <span style={{ marginLeft: '8px', color: 'orange', fontWeight: 'bold' }}>
+                                        ({pendientes} pendiente{pendientes > 1 ? 's' : ''})
+                                    </span>
+                                )}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => setSelectedPatient(p)}
+                            style={{
+                                marginLeft: '16px',
+                                padding: '6px 14px',
+                                backgroundColor: '#17a2b8',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            Ver ficha
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 
 // ── Vista: Perfil del médico ──────────────────────────────────────────────────
 
@@ -358,7 +532,7 @@ const doctorMenuData = [
             { name: 'Historial de citas', view: 'historial-citas' },
         ],
     },
-    { title: '2. Información de pacientes', icon: '📄', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '2. Información de pacientes', icon: '📄', links: [{ name: 'Mis pacientes', view: 'mis-pacientes' }] },
     { title: '3. Prescripciones', icon: '✍️', links: [{ name: 'Próximamente', view: 'placeholder' }] },
     { title: '4. Comunicación', icon: '💬', links: [{ name: 'Próximamente', view: 'placeholder' }] },
     { title: '5. Reportes y estadísticas', icon: '📈', links: [{ name: 'Próximamente', view: 'placeholder' }] },
@@ -377,6 +551,9 @@ const DoctorDashboard = () => {
     const [openAccordion, setOpenAccordion] = useState(null);
     const [appointments, setAppointments]   = useState([]);
     const [loadingData, setLoadingData]     = useState(true);
+    const [patients, setPatients]           = useState([]);
+    const [loadingPatients, setLoadingPatients] = useState(false);
+    const [patientsFetched, setPatientsFetched] = useState(false);
 
     const doctorName = store.user
         ? `Dr/a. ${store.user.first_name} ${store.user.last_name}`
@@ -400,6 +577,24 @@ const DoctorDashboard = () => {
     const handleProfileSave = (updatedUser) => {
         dispatch({ type: 'update_user', payload: updatedUser });
     };
+
+    /**
+     * loadPatients
+     * Carga la lista de pacientes del médico desde la API.
+     * Solo hace la petición una vez (se guarda en patientsFetched).
+     */
+    const loadPatients = async () => {
+        if (patientsFetched) return;
+        setLoadingPatients(true);
+        const result = await getMyPatients();
+        if (result.success) setPatients(result.data);
+        setLoadingPatients(false);
+        setPatientsFetched(true);
+    };
+
+    useEffect(() => {
+        if (currentView === 'mis-pacientes') loadPatients();
+    }, [currentView]);
 
     /**
      * handleComplete
@@ -431,6 +626,8 @@ const DoctorDashboard = () => {
                 return <AgendaHoy appointments={appointments} onComplete={handleComplete} />;
             case 'historial-citas':
                 return <HistorialCitas appointments={appointments} />;
+            case 'mis-pacientes':
+                return <MisPacientes patients={patients} appointments={appointments} loading={loadingPatients} />;
             case 'perfil':
                 return <PerfilMedico user={store.user} onSave={handleProfileSave} />;
             case 'placeholder':
@@ -499,6 +696,13 @@ const DoctorDashboard = () => {
                         onClick={() => setCurrentView('historial-citas')}
                     >
                         <span className="button-icon">📋</span> Historial
+                    </button>
+                    <button
+                        className="quick-button"
+                        style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}
+                        onClick={() => setCurrentView('mis-pacientes')}
+                    >
+                        <span className="button-icon">👥</span> Mis pacientes
                     </button>
                     <button
                         className="quick-button"

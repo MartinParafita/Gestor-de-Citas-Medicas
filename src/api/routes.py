@@ -381,10 +381,34 @@ def update_appointment(appointment_id):
 
 
 @api.route('/appointment/<int:appointment_id>/cancel', methods=['PUT'])
+@jwt_required()
 def cancel_appointment(appointment_id):
+    """
+    Cancela una cita médica.
+
+    Solo el paciente dueño de la cita puede cancelarla.
+    La cita debe estar en estado 'Pending'.
+
+    Requiere JWT de paciente.
+
+    Respuesta 200: cita actualizada (serialize).
+    Errores:
+        404 — cita no encontrada.
+        403 — la cita no pertenece al paciente autenticado.
+        409 — la cita no está en estado Pending.
+    """
+    patient_id = int(get_jwt_identity())
     appt = Appointment.query.get(appointment_id)
+
     if not appt:
-        return jsonify({"error": "Cita no encontrada"}), 404
+        return jsonify({"error": "Cita no encontrada."}), 404
+
+    if appt.patient_id != patient_id:
+        return jsonify({"error": "No tenés permiso para cancelar esta cita."}), 403
+
+    if appt.status != "Pending":
+        return jsonify({"error": f"La cita ya está en estado '{appt.status}' y no puede cancelarse."}), 409
+
     appt.cancel()
     return jsonify(appt.serialize()), 200
 
@@ -420,6 +444,31 @@ def complete_appointment(appointment_id):
 
     appt.update(status="Completed")
     return jsonify(appt.serialize()), 200
+
+
+# ── Pacientes del médico ──────────────────────────────────────────────────────
+
+@api.route('/doctor/patients', methods=['GET'])
+@jwt_required()
+def get_doctor_patients():
+    """
+    Retorna la lista de pacientes únicos que tienen al menos una cita
+    con el médico autenticado.
+
+    Requiere JWT de médico.
+
+    Respuesta 200: lista de pacientes (serialize).
+    """
+    doctor_id = int(get_jwt_identity())
+    patient_ids = (
+        db.session.query(Appointment.patient_id)
+        .filter_by(doctor_id=doctor_id)
+        .distinct()
+        .all()
+    )
+    patient_ids = [pid[0] for pid in patient_ids]
+    patients = Patient.query.filter(Patient.id.in_(patient_ids)).all()
+    return jsonify([p.serialize() for p in patients]), 200
 
 
 # ── Centros ───────────────────────────────────────────────────────────────────
