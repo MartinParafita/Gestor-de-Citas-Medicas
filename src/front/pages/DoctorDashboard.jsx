@@ -1,13 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import useGlobalReducer from '../hooks/useGlobalReducer';
-import { getMyAppointmentsDoctor, updateDoctorProfile } from '../services/fetch';
+import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment } from '../services/fetch';
 import '../css/DoctorDashboard.css';
+
+// ── Helpers de estado ─────────────────────────────────────────────────────────
+
+const STATUS_COLOR = {
+    Pending:   'orange',
+    Completed: 'green',
+    Cancelled: 'red',
+};
+
+const STATUS_LABEL = {
+    Pending:   'Pendiente',
+    Completed: 'Completada',
+    Cancelled: 'Cancelada',
+};
 
 // ── Vista: Agenda del día ─────────────────────────────────────────────────────
 
-const AgendaHoy = ({ appointments }) => {
+/**
+ * AgendaHoy
+ *
+ * Muestra las citas del día actual y las próximas (hasta 5).
+ * Permite al médico marcar como completada cualquier cita en estado Pending.
+ *
+ * Props:
+ *   appointments {Array}    - Lista de citas del médico.
+ *   onComplete   {Function} - Callback(appointmentId) para marcar como completada.
+ */
+const AgendaHoy = ({ appointments, onComplete }) => {
     const today = new Date();
     const todayStr = today.toDateString();
+    const [completing, setCompleting] = useState(null); // ID de la cita en proceso
 
     const citasHoy = appointments
         .filter(a => {
@@ -26,6 +51,17 @@ const AgendaHoy = ({ appointments }) => {
         .sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date))
         .slice(0, 5);
 
+    /**
+     * handleComplete
+     * Llama al callback del padre para marcar la cita como completada.
+     * Bloquea el botón mientras espera la respuesta.
+     */
+    const handleComplete = async (citaId) => {
+        setCompleting(citaId);
+        await onComplete(citaId);
+        setCompleting(null);
+    };
+
     return (
         <div className="cita-container">
             <h2>📅 Agenda y Citas</h2>
@@ -41,8 +77,31 @@ const AgendaHoy = ({ appointments }) => {
                             <div className="details-grid">
                                 <span><strong>Hora:</strong> {d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
                                 <span><strong>Paciente:</strong> {cita.patient_name || `ID ${cita.patient_id}`}</span>
-                                <span><strong>Estado:</strong> <span style={{ color: cita.status === 'Pending' ? 'orange' : 'green' }}>{cita.status}</span></span>
+                                <span>
+                                    <strong>Estado:</strong>{' '}
+                                    <span style={{ color: STATUS_COLOR[cita.status] || 'gray' }}>
+                                        {STATUS_LABEL[cita.status] || cita.status}
+                                    </span>
+                                </span>
                             </div>
+                            {cita.status === 'Pending' && (
+                                <button
+                                    onClick={() => handleComplete(cita.id)}
+                                    disabled={completing === cita.id}
+                                    style={{
+                                        marginTop: '10px',
+                                        padding: '6px 14px',
+                                        backgroundColor: completing === cita.id ? '#aaa' : '#28a745',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        cursor: completing === cita.id ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                    }}
+                                >
+                                    {completing === cita.id ? 'Guardando...' : '✔ Marcar como completada'}
+                                </button>
+                            )}
                         </div>
                     );
                 })
@@ -342,6 +401,22 @@ const DoctorDashboard = () => {
         dispatch({ type: 'update_user', payload: updatedUser });
     };
 
+    /**
+     * handleComplete
+     * Llama a la API para marcar una cita como completada.
+     * Si tiene éxito, actualiza el estado local de la cita sin recargar.
+     *
+     * @param {number} appointmentId - ID de la cita a completar.
+     */
+    const handleComplete = async (appointmentId) => {
+        const result = await completeAppointment(appointmentId);
+        if (result.success) {
+            setAppointments(prev =>
+                prev.map(a => a.id === appointmentId ? { ...a, status: 'Completed' } : a)
+            );
+        }
+    };
+
     const todayCount = appointments.filter(a => {
         if (a.status === 'Cancelled') return false;
         const d = a.appointment_date ? new Date(a.appointment_date) : null;
@@ -353,7 +428,7 @@ const DoctorDashboard = () => {
 
         switch (currentView) {
             case 'agenda-hoy':
-                return <AgendaHoy appointments={appointments} />;
+                return <AgendaHoy appointments={appointments} onComplete={handleComplete} />;
             case 'historial-citas':
                 return <HistorialCitas appointments={appointments} />;
             case 'perfil':

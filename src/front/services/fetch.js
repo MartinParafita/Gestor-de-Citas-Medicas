@@ -174,6 +174,27 @@ export async function getMyAppointmentsDoctor() {
     }
 }
 
+/**
+ * Marca una cita como completada.
+ *
+ * Solo puede llamarla el médico asignado a la cita.
+ * La cita debe estar en estado 'Pending'.
+ *
+ * @param {number} appointmentId - ID de la cita a completar.
+ * @returns {{ success: boolean, data?: Object, message?: string }}
+ */
+export async function completeAppointment(appointmentId) {
+    try {
+        const response = await fetch(`${BASE}/api/appointment/${appointmentId}/complete`, {
+            method: "PUT",
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
 export async function createAppointmentAPI({ doctor_id, center_id, appointment_date }) {
     try {
         const response = await fetch(`${BASE}/api/appointment`, {
