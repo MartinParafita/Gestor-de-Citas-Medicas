@@ -347,6 +347,12 @@ def create_appointment():
 
     appointment_dt = datetime.strptime(appointment_date, "%d-%m-%Y %H:%M")
 
+    # Si no se envió center_id, usar el centro del médico seleccionado.
+    # Fallback al centro 1 (temporal hasta implementar selección de centro).
+    if not center_id:
+        doctor = Doctor.query.get(doctor_id)
+        center_id = doctor.center_id if doctor and doctor.center_id else 1
+
     new_appointment = Appointment.create(
         doctor_id=doctor_id,
         patient_id=patient_id,
@@ -380,6 +386,39 @@ def cancel_appointment(appointment_id):
     if not appt:
         return jsonify({"error": "Cita no encontrada"}), 404
     appt.cancel()
+    return jsonify(appt.serialize()), 200
+
+
+@api.route('/appointment/<int:appointment_id>/complete', methods=['PUT'])
+@jwt_required()
+def complete_appointment(appointment_id):
+    """
+    Marca una cita como completada.
+
+    Solo el médico asignado a la cita puede completarla.
+    La cita debe estar en estado 'Pending'.
+
+    Requiere JWT de médico.
+
+    Respuesta 200: cita actualizada (serialize).
+    Errores:
+        404 — cita no encontrada.
+        403 — la cita no pertenece al médico autenticado.
+        409 — la cita no está en estado Pending.
+    """
+    doctor_id = int(get_jwt_identity())
+    appt = Appointment.query.get(appointment_id)
+
+    if not appt:
+        return jsonify({"error": "Cita no encontrada."}), 404
+
+    if appt.doctor_id != doctor_id:
+        return jsonify({"error": "No tenés permiso para modificar esta cita."}), 403
+
+    if appt.status != "Pending":
+        return jsonify({"error": f"La cita ya está en estado '{appt.status}'."}), 409
+
+    appt.update(status="Completed")
     return jsonify(appt.serialize()), 200
 
 
