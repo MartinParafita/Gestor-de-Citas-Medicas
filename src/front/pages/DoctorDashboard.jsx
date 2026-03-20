@@ -850,13 +850,12 @@ const PerfilMedico = ({ user, onSave }) => {
                                 <select
                                     value={centerId}
                                     onChange={e => setCenterId(e.target.value)}
-                                    size={Math.min(filtered.length + 1, 8)}
-                                    style={{ display: 'block', width: '100%', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc' }}
+                                    style={{ display: 'block', width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
                                 >
                                     <option value="">-- Sin centro asignado --</option>
                                     {filtered.map(c => (
                                         <option key={c.id} value={c.id}>
-                                            {c.name}{c.type_center ? ` — ${c.type_center}` : ''}{c.zip_code ? ` (${c.zip_code})` : ''}
+                                            {c.name}{c.zip_code ? ` (${c.zip_code})` : ''}
                                         </option>
                                     ))}
                                 </select>

@@ -158,11 +158,12 @@ export async function updatePatientProfile(data) {
  * por lo que no es necesario pasar el ID explícitamente.
  *
  * @param {Object} data - Campos a actualizar. Puede contener:
- *   - email          {string}  Nuevo email.
- *   - specialty      {string}  Nueva especialidad.
- *   - work_days      {number}  Días de trabajo por semana (1-7).
- *   - current_password {string} Contraseña actual (requerida para cambiar contraseña).
- *   - new_password   {string}  Nueva contraseña (requerida para cambiar contraseña).
+ *   - email            {string}   Nuevo email.
+ *   - specialty        {string}   Nueva especialidad.
+ *   - center_id        {number|null} ID del centro donde trabaja (null para desasignar).
+ *   - work_days        {number}   Días de trabajo por semana (1-7).
+ *   - current_password {string}   Contraseña actual (requerida para cambiar contraseña).
+ *   - new_password     {string}   Nueva contraseña (requerida para cambiar contraseña).
  * @returns {{ success: boolean, data?: Object, message?: string }}
  */
 export async function updateDoctorProfile(data) {
