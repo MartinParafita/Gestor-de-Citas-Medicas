@@ -159,6 +159,7 @@ class Doctor(db.Model):
             "last_name": self.last_name,
             "specialty": self.specialty,
             "center_id": self.center_id,
+            "center_name": self.center.name if self.center else None,
             "work_days": self.work_days,
             "is_active": self.is_active,
         }
@@ -184,17 +185,23 @@ class Doctor(db.Model):
         return new_doctor
     
 
-    def update(self, email=None, password=None, center_id=None, work_days=None, specialty=None):
+    # Sentinel para distinguir "no se pasó el argumento" de "se pasó None"
+    _UNSET = object()
+
+    def update(self, email=None, password=None, center_id=_UNSET, work_days=None, specialty=None):
         """
         Actualiza los campos del médico que se reciban como argumento.
-        Solo modifica los campos que no sean None.
+        Solo modifica los campos que no sean None (o _UNSET para center_id).
+
+        center_id usa un sentinel (_UNSET) para distinguir entre
+        "no se envió" (no cambia) y "se envió None" (desasignar centro).
 
         Parámetros:
-            email     (str) : nuevo email del médico.
-            password  (str) : nueva contraseña ya hasheada con bcrypt.
-            center_id (int) : ID del centro médico asignado.
-            work_days (int) : días de trabajo por semana.
-            specialty (str) : especialidad médica.
+            email     (str)      : nuevo email del médico.
+            password  (str)      : nueva contraseña ya hasheada con bcrypt.
+            center_id (int|None) : ID del centro médico, o None para desasignar.
+            work_days (int)      : días de trabajo por semana.
+            specialty (str)      : especialidad médica.
         """
         if email is not None:
             self.email = email
@@ -202,7 +209,7 @@ class Doctor(db.Model):
             self.password = password
         if work_days is not None:
             self.work_days = work_days
-        if center_id is not None:
+        if center_id is not self._UNSET:
             self.center_id = center_id
         if specialty is not None:
             self.specialty = specialty
@@ -237,7 +244,8 @@ class Appointment(db.Model):
     patient_id: Mapped[int] = mapped_column(Integer, ForeignKey(
         "patients.id"), nullable=False, index=True)
     center_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("centers.id"), index=True)
+        Integer, ForeignKey("centers.id", ondelete="SET NULL"),
+        nullable=True, index=True)
     appointment_date: Mapped[datetime] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String)
 
@@ -253,6 +261,7 @@ class Appointment(db.Model):
                 "doctor_id": self.doctor_id,
                 "patient_id": self.patient_id,
                 "center_id": self.center_id,
+                "center_name": self.center.name if self.center else None,
                 "appointment_date": self.appointment_date.isoformat() if self.appointment_date else None,
                 "status": self.status,
                 "doctor_name": f"{self.doctor.first_name} {self.doctor.last_name}" if self.doctor else None,

@@ -361,11 +361,10 @@ def create_appointment():
 
     appointment_dt = datetime.strptime(appointment_date, "%d-%m-%Y %H:%M")
 
-    # Si no se envió center_id, usar el centro del médico seleccionado.
-    # Fallback al centro 1 (temporal hasta implementar selección de centro).
+    # Si no se envió center_id, usar el centro asignado al médico.
     if not center_id:
         doctor = Doctor.query.get(doctor_id)
-        center_id = doctor.center_id if doctor and doctor.center_id else 1
+        center_id = doctor.center_id if doctor and doctor.center_id else None
 
     new_appointment = Appointment.create(
         doctor_id=doctor_id,

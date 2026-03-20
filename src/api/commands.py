@@ -14,6 +14,7 @@ Uso:
 
 import click
 import requests
+from sqlalchemy import text
 from api.models import db, User, Center
 
 
@@ -24,27 +25,20 @@ from api.models import db, User, Center
 #: Fuente: https://datos.madrid.es/egob/catalogo/212769-0-atencion-medica.json
 MADRID_CENTERS_URL = "https://datos.madrid.es/egob/catalogo/212769-0-atencion-medica.json"
 
-#: Tipos de centro que se importan. El resto (p.ej. oficinas administrativas) se omiten.
+#: Tipos de centro que se importan (comparación parcial en minúsculas).
+#: Todos los tipos del dataset de datos.madrid.es son centros sanitarios,
+#: así que se incluyen todos. Se mantiene la lista por si el dataset
+#: incorpora nuevos tipos no médicos en el futuro.
 TIPOS_RELEVANTES = {
-    "hospital",
     "centro de salud",
-    "centro de especialidades",
-    "urgencias",
-    "centro de urgencias",
-    "centro municipal de salud",
-    "centro de vacunación",
-    "centro de vacunacion",
     "especialidades",
-    "atención primaria",
-    "atencion primaria",
     "salud mental",
-    "centro de atención primaria",
-    "centro de atencion primaria",
-    "centro sociosanitario",
-    "consultorio",
-    "ambulatorio",
-    "policlínico",
-    "policlinico",
+    "centro medico",
+    "prevencion",
+    "asistencia",
+    "rehabilitacion",
+    "hospital",
+    "urgencias",
 }
 
 
@@ -79,37 +73,43 @@ def _extract_phone(phone_raw):
 
 def _extract_type(item):
     """
-    Determina el tipo de centro a partir del campo '@type' del JSON-LD (schema.org).
+    Determina el tipo de centro a partir del campo '@type' del JSON-LD.
 
-    Se usa exclusivamente '@type' porque 'organization.organization-desc' contiene
-    una descripción larga de texto libre (con info de transporte, horarios, teléfonos)
-    que no sirve como tipo y desborda el campo String(80) del modelo Center.
+    datos.madrid.es usa URIs propias como '@type' (no schema.org):
+        .../CentrosSalud                      -> Centro de Salud
+        .../CentrosEspecialidadesMedicas       -> Especialidades
+        .../CentrosSaludMental                 -> Salud Mental
+        .../OtrosCentrosMedicos                -> Centro Medico
+        .../CentrosPrevencionEnfermedades      -> Prevencion
+        .../CentrosAsistenciaDrogodependientes -> Asistencia
+        .../CentrosRehabilitacionPsicosocial   -> Rehabilitacion Psicosocial
 
-    El valor '@type' llega como string ('schema:Hospital') o lista (['schema:Hospital']).
-    Se toma el primer valor, se elimina el prefijo de namespace y se mapea a un
-    nombre legible en español. Si no hay mapeo conocido, se devuelve el valor sin prefijo
-    truncado a 79 caracteres.
-
-    Mapeos schema.org → español:
-        Hospital            → Hospital
-        MedicalClinic       → Centro de Salud
-        EmergencyService    → Urgencias
-        MedicalOrganization → Centro Sanitario
-        Pharmacy            → Farmacia
+    Se extrae el ultimo segmento de la URI (split por '/') y se busca
+    en TYPE_MAP. Si no hay coincidencia, se devuelve el segmento tal
+    cual, truncado a 79 caracteres.
 
     Args:
         item (dict): Elemento individual del array '@graph'.
 
     Returns:
-        str: Tipo de centro legible (máx. 79 caracteres).
+        str: Tipo de centro legible (max. 79 caracteres).
     """
-    # Mapeo de tipos schema.org a etiquetas en español
+    # Mapeo del último segmento de la URI @type a etiqueta legible.
+    # Fuente: datos.madrid.es usa URIs propias, no schema.org.
     TYPE_MAP = {
+        # Segmentos reales del dataset de datos.madrid.es
+        "centrossalud":                       "Centro de Salud",
+        "centrosespecialidadesmedicas":        "Especialidades",
+        "centrossaludmental":                  "Salud Mental",
+        "otroscentrosmedicos":                 "Centro Medico",
+        "centrosprevencionenfermedades":       "Prevencion",
+        "centrosasistenciadrogodependientes":  "Asistencia",
+        "centrosrehabilitacionpsicosocial":    "Rehabilitacion Psicosocial",
+        # Fallback schema.org (por si el dataset cambia de formato)
         "hospital":            "Hospital",
         "medicalclinic":       "Centro de Salud",
         "emergencyservice":    "Urgencias",
         "medicalorganization": "Centro Sanitario",
-        "pharmacy":            "Farmacia",
     }
 
     raw_type = item.get("@type", "")
@@ -117,8 +117,11 @@ def _extract_type(item):
         raw_type = raw_type[0]
 
     if isinstance(raw_type, str) and raw_type:
-        # Eliminar namespace (ej. "schema:Hospital" → "Hospital")
-        label = raw_type.split(":")[-1].strip()
+        # El valor puede ser:
+        #   - prefijo schema.org:  "schema:Hospital"
+        #   - URI completa:        "http://datos.madrid.es/.../Hospital"
+        # En ambos casos, el tipo útil es el último segmento.
+        label = raw_type.split("/")[-1].split(":")[-1].strip()
         return TYPE_MAP.get(label.lower(), label)[:79]
 
     return "Centro Sanitario"
@@ -267,9 +270,23 @@ def setup_commands(app):
         """
         # ── 1. Limpiar si se solicita ──────────────────────────────────────────
         if clear:
-            deleted = Center.query.delete()
+            # Orden de borrado respetando FKs (hojas primero, raíz al final):
+            #   1) clinical_records  → FK a appointments
+            #   2) appointments      → FK a centers, doctors, patients
+            #   3) centers           → tabla objetivo
+            # Los doctores NO se tocan: su center_id es nullable y el
+            # ON DELETE SET NULL de la FK los deja con center_id = NULL.
+            db.session.execute(text("DELETE FROM clinical_records"))
+            db.session.execute(text("DELETE FROM appointments"))
+            db.session.execute(text("DELETE FROM centers"))
+            db.session.execute(text(
+                "ALTER SEQUENCE centers_id_seq RESTART WITH 1"
+            ))
             db.session.commit()
-            click.echo(f"[CLEAR] {deleted} centros eliminados de la base de datos.")
+            click.echo(
+                "[CLEAR] clinical_records, citas y centros eliminados. "
+                "Doctores y pacientes intactos."
+            )
 
         # ── 2. Descargar JSON ──────────────────────────────────────────────────
         click.echo(f"[FETCH] Descargando datos desde:\n        {MADRID_CENTERS_URL}")
@@ -325,14 +342,17 @@ def setup_commands(app):
         db.session.commit()
 
         # ── 5. Resumen ─────────────────────────────────────────────────────────
-        click.echo("\n── Resumen de importación ──────────────────────────────")
+        sep = "-" * 56
+        click.echo(f"\n{sep}")
+        click.echo("  Resumen de importacion")
+        click.echo(sep)
         click.echo(f"  Insertados:          {inserted}")
         click.echo(f"  Omitidos (duplicado):{skipped_dup}")
         click.echo(f"  Omitidos (tipo):     {skipped_type}")
         click.echo(f"  Sin nombre (error):  {errors}")
         click.echo(f"  Total procesados:    {len(graph)}")
-        click.echo("────────────────────────────────────────────────────────")
+        click.echo(sep)
         if inserted > 0:
             click.echo(f"[OK] {inserted} centros sanitarios importados correctamente.")
         else:
-            click.echo("[OK] No se importaron centros nuevos (todos ya existían o fueron filtrados).")
+            click.echo("[OK] No se importaron centros nuevos (todos ya existian o fueron filtrados).")
