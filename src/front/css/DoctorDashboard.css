@@ -21,7 +21,7 @@ body {
 }
 
 .content h1 {
-    color: #007bff;
+    color: #20B2AA;
     margin-top: 0;
     border-bottom: 2px solid #eee;
     padding-bottom: 10px;
@@ -41,7 +41,7 @@ body {
     padding: 10px 20px 25px;
     font-size: 1.2em;
     font-weight: 600;
-    color: #007bff; 
+    color: #20B2AA; 
     border-bottom: 1px solid #dee2e6;
     margin: 0 0 15px 0;
 }
@@ -179,18 +179,18 @@ body {
 }
 
 .day-today {
-    border: 2px solid #007bff;
+    border: 2px solid #20B2AA;
     font-weight: bold;
 }
 
 .day-selected {
-    background-color: #007bff; 
+    background-color: #20B2AA; 
     color: white; 
     font-weight: bold;
 }
 
 .day-has-appointments {
-    color: #1a75ff; 
+    color: #20B2AA; 
     font-weight: 700; 
 }
 
@@ -215,7 +215,7 @@ body {
 }
 
 .appointment-header {
-    color: #007bff;
+    color: #20B2AA;
     border-bottom: 1px dashed #ccc;
     padding-bottom: 10px;
     margin-bottom: 15px;
@@ -262,7 +262,7 @@ body {
 
 .appointment-time {
     font-weight: bold;
-    color: #007bff;
+    color: #20B2AA;
     font-size: 1.1em;
 }
 
@@ -315,10 +315,10 @@ body {
 
 .appointment-status.status-pending {
     background-color: #e6f7ff;
-    color: #1890ff;
+    color: #20B2AA;
 }
 .appointment-item:has(.status-pending) {
-    border-left-color: #1890ff;
+    border-left-color: #20B2AA;
 }
 
 .appointment-status.status-in-progress {
@@ -405,4 +405,164 @@ body {
     background-color: #ffebee; /* Rojo claro */
     color: #c62828;
     border: 1px solid #ffcdd2;
+}
+
+/* ── Reportes y estadísticas ────────────────────────────────────────────────── */
+
+.reportes-container h2 {
+    color: #20B2AA;
+    margin-top: 0;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 24px;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.kpi-card {
+    background: #f0fafa;
+    border: 1px solid #b2dfdb;
+    border-radius: 10px;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.kpi-card.kpi-green {
+    background: #e8f5e9;
+    border-color: #c8e6c9;
+}
+
+.kpi-value {
+    font-size: 2.2em;
+    font-weight: 700;
+    color: #20B2AA;
+}
+
+.kpi-card.kpi-green .kpi-value {
+    color: #2e7d32;
+}
+
+.kpi-label {
+    font-size: 0.85em;
+    color: #6c757d;
+    text-align: center;
+}
+
+.stats-section {
+    background: #fcfcfc;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+}
+
+.stats-section h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6c757d;
+}
+
+/* Gráfico de barras */
+.bar-chart {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    height: 140px;
+}
+
+.bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+
+.bar-wrapper {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+
+.bar-fill {
+    width: 100%;
+    background: #20B2AA;
+    border-radius: 4px 4px 0 0;
+    min-height: 4px;
+    transition: height 0.3s ease;
+}
+
+.bar-value {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: #333;
+    margin-top: 4px;
+}
+
+.bar-label {
+    font-size: 0.75em;
+    color: #6c757d;
+    margin-top: 2px;
+    text-transform: capitalize;
+}
+
+/* Distribución de estados */
+.status-dist {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.status-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-dist-label {
+    width: 110px;
+    font-size: 0.9em;
+    color: #495057;
+    flex-shrink: 0;
+}
+
+.status-dist-bar-track {
+    flex: 1;
+    background: #eee;
+    border-radius: 4px;
+    height: 14px;
+    overflow: hidden;
+}
+
+.status-dist-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+    min-width: 4px;
+}
+
+.status-dist-count {
+    font-size: 0.85em;
+    color: #6c757d;
+    width: 90px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.no-data {
+    color: #6c757d;
+    font-style: italic;
 }
