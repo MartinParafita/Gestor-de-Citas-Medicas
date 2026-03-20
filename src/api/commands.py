@@ -1,22 +1,196 @@
+"""
+commands.py — Comandos CLI de Flask para tareas de mantenimiento y carga de datos.
+
+Registro de comandos disponibles:
+    insert-test-users <count>   Crea N usuarios de prueba en la tabla User.
+    insert-test-data            Placeholder para datos de prueba adicionales.
+    import-centers              Importa centros sanitarios de Madrid desde datos.madrid.es.
+
+Uso:
+    pipenv run flask insert-test-users 5
+    pipenv run flask import-centers
+    pipenv run flask import-centers --clear
+"""
 
 import click
-from api.models import db, User
+import requests
+from api.models import db, User, Center
 
-"""
-In this file, you can add as many commands as you want using the @app.cli.command decorator
-Flask commands are usefull to run cronjobs or tasks outside of the API but sill in integration 
-with youy database, for example: Import the price of bitcoin every night as 12am
-"""
-def setup_commands(app):
-    
-    """ 
-    This is an example command "insert-test-users" that you can run from the command line
-    by typing: $ flask insert-test-users 5
-    Note: 5 is the number of users to add
+
+# ── Constantes del comando import-centers ─────────────────────────────────────
+
+#: URL del dataset "Sedes. Centros de Atención Médica" del Ayuntamiento de Madrid.
+#: Formato JSON-LD (schema.org). Licencia CC-BY 4.0. Sin autenticación.
+#: Fuente: https://datos.madrid.es/egob/catalogo/212769-0-atencion-medica.json
+MADRID_CENTERS_URL = "https://datos.madrid.es/egob/catalogo/212769-0-atencion-medica.json"
+
+#: Tipos de centro que se importan. El resto (p.ej. oficinas administrativas) se omiten.
+TIPOS_RELEVANTES = {
+    "hospital",
+    "centro de salud",
+    "centro de especialidades",
+    "urgencias",
+    "centro de urgencias",
+    "centro municipal de salud",
+    "centro de vacunación",
+    "centro de vacunacion",
+    "especialidades",
+    "atención primaria",
+    "atencion primaria",
+    "salud mental",
+    "centro de atención primaria",
+    "centro de atencion primaria",
+    "centro sociosanitario",
+    "consultorio",
+    "ambulatorio",
+    "policlínico",
+    "policlinico",
+}
+
+
+# ── Helpers privados ──────────────────────────────────────────────────────────
+
+def _extract_phone(phone_raw):
     """
+    Normaliza el campo 'phone' del JSON de datos.madrid.es.
+
+    El campo puede llegar como string, dict con clave 'telephone',
+    o lista de cualquiera de los anteriores.
+
+    Args:
+        phone_raw: Valor crudo del campo phone.
+
+    Returns:
+        str: Número de teléfono como cadena, o "" si no hay datos.
+    """
+    if not phone_raw:
+        return ""
+    if isinstance(phone_raw, str):
+        return phone_raw.strip()
+    if isinstance(phone_raw, dict):
+        return str(phone_raw.get("telephone", "")).strip()
+    if isinstance(phone_raw, list) and phone_raw:
+        first = phone_raw[0]
+        if isinstance(first, dict):
+            return str(first.get("telephone", "")).strip()
+        return str(first).strip()
+    return str(phone_raw).strip()
+
+
+def _extract_type(item):
+    """
+    Determina el tipo de centro a partir del campo 'organization' o '@type'.
+
+    Intenta primero 'organization.organization-desc'; si está vacío,
+    usa el último segmento del campo '@type' (ej. 'schema:MedicalClinic' → 'MedicalClinic').
+
+    Args:
+        item (dict): Objeto del @graph del JSON.
+
+    Returns:
+        str: Tipo de centro normalizado, o "Centro Sanitario" como fallback.
+    """
+    org = item.get("organization", {})
+    if isinstance(org, dict):
+        t = org.get("organization-desc", "").strip()
+        if t:
+            return t
+
+    raw_type = item.get("@type", "")
+    if isinstance(raw_type, str) and raw_type:
+        return raw_type.split(":")[-1].strip()
+    if isinstance(raw_type, list) and raw_type:
+        return raw_type[0].split(":")[-1].strip()
+
+    return "Centro Sanitario"
+
+
+def _build_center_dict(item):
+    """
+    Extrae y normaliza los campos de un elemento del @graph de datos.madrid.es.
+
+    Mapea los campos del JSON al modelo Center:
+        title                       → name
+        address.street-address      → address
+        address.postal-code         → zip_code
+        phone / phone[].telephone   → phone
+        organization.organization-desc o @type → type_center
+
+    Args:
+        item (dict): Elemento individual del array '@graph'.
+
+    Returns:
+        dict | None: Diccionario con claves {name, address, zip_code, phone, type_center},
+                     o None si el elemento no tiene nombre válido.
+    """
+    name = item.get("title", "").strip()
+    if not name:
+        return None
+
+    address_obj = item.get("address", {})
+    if isinstance(address_obj, dict):
+        address  = address_obj.get("street-address", "").strip()
+        zip_code = address_obj.get("postal-code", "").strip()
+    else:
+        address  = ""
+        zip_code = ""
+
+    return {
+        "name":        name,
+        "address":     address,
+        "zip_code":    zip_code,
+        "phone":       _extract_phone(item.get("phone", "")),
+        "type_center": _extract_type(item),
+    }
+
+
+def _is_relevant(type_center):
+    """
+    Decide si un tipo de centro es relevante para el sistema de citas.
+
+    Compara en minúsculas y sin acentos aproximados contra TIPOS_RELEVANTES.
+    Si el tipo es desconocido, se importa igualmente para no perder datos.
+
+    Args:
+        type_center (str): Tipo de centro tal como viene del JSON.
+
+    Returns:
+        bool: True si el centro debe importarse.
+    """
+    t = type_center.lower().strip()
+    # Si no tiene tipo claro, lo importamos para no perder centros
+    if not t or t == "centro sanitario":
+        return True
+    return any(relevante in t for relevante in TIPOS_RELEVANTES)
+
+
+# ── Configuración de comandos ─────────────────────────────────────────────────
+
+def setup_commands(app):
+    """
+    Registra todos los comandos CLI en la aplicación Flask.
+
+    Se llama desde app.py en el proceso de arranque de la aplicación.
+    Cada comando es accesible con: pipenv run flask <nombre-comando> [opciones]
+
+    Args:
+        app: Instancia de la aplicación Flask.
+    """
+
+    # ── insert-test-users ─────────────────────────────────────────────────────
+
     @app.cli.command("insert-test-users")
     @click.argument("count")
     def insert_test_users(count):
+        """
+        Crea N usuarios de prueba en la tabla User.
+
+        Args:
+            count (str): Número de usuarios a crear (se convierte a int).
+
+        Uso:
+            pipenv run flask insert-test-users 5
+        """
         print("Creating test users")
         for x in range(1, int(count) + 1):
             user = User()
@@ -26,9 +200,120 @@ def setup_commands(app):
             db.session.add(user)
             db.session.commit()
             print("User: ", user.email, " created.")
-
         print("All test users created")
+
+    # ── insert-test-data ──────────────────────────────────────────────────────
 
     @app.cli.command("insert-test-data")
     def insert_test_data():
+        """
+        Placeholder para insertar datos de prueba adicionales.
+
+        Uso:
+            pipenv run flask insert-test-data
+        """
         pass
+
+    # ── import-centers ────────────────────────────────────────────────────────
+
+    @app.cli.command("import-centers")
+    @click.option(
+        "--clear",
+        is_flag=True,
+        default=False,
+        help="Elimina todos los centros existentes antes de importar.",
+    )
+    def import_centers(clear):
+        """
+        Importa centros sanitarios de Madrid desde el portal de datos abiertos
+        del Ayuntamiento de Madrid (datos.madrid.es).
+
+        Fuente: dataset "Sedes. Centros de Atención Médica"
+        Licencia: CC-BY 4.0 · Sin autenticación.
+
+        Comportamiento:
+            - Descarga el JSON-LD en tiempo real desde datos.madrid.es.
+            - Filtra tipos de centro relevantes (hospitales, centros de salud,
+              especialidades, urgencias, vacunación, salud mental...).
+            - Omite centros que ya existan en la BD (mismo nombre + código postal)
+              para permitir ejecuciones repetidas sin duplicados.
+            - Con --clear, vacía la tabla centers antes de importar.
+
+        Opciones:
+            --clear     Trunca la tabla centers antes de importar.
+
+        Uso:
+            pipenv run flask import-centers
+            pipenv run flask import-centers --clear
+        """
+        # ── 1. Limpiar si se solicita ──────────────────────────────────────────
+        if clear:
+            deleted = Center.query.delete()
+            db.session.commit()
+            click.echo(f"[CLEAR] {deleted} centros eliminados de la base de datos.")
+
+        # ── 2. Descargar JSON ──────────────────────────────────────────────────
+        click.echo(f"[FETCH] Descargando datos desde:\n        {MADRID_CENTERS_URL}")
+        try:
+            response = requests.get(MADRID_CENTERS_URL, timeout=20)
+            response.raise_for_status()
+        except requests.exceptions.Timeout:
+            click.echo("[ERROR] Tiempo de espera agotado al conectar con datos.madrid.es.")
+            return
+        except requests.exceptions.RequestException as e:
+            click.echo(f"[ERROR] No se pudo descargar el dataset: {e}")
+            return
+
+        graph = response.json().get("@graph", [])
+        click.echo(f"[FETCH] {len(graph)} registros recibidos.")
+
+        # ── 3. Índice de centros existentes (nombre + zip) para deduplicar ────
+        existing = {
+            (c.name.lower(), c.zip_code)
+            for c in Center.query.with_entities(Center.name, Center.zip_code).all()
+        }
+
+        # ── 4. Procesar e insertar ─────────────────────────────────────────────
+        inserted = skipped_type = skipped_dup = errors = 0
+
+        for item in graph:
+            data = _build_center_dict(item)
+
+            if data is None:
+                errors += 1
+                continue
+
+            if not _is_relevant(data["type_center"]):
+                skipped_type += 1
+                continue
+
+            key = (data["name"].lower(), data["zip_code"])
+            if key in existing:
+                skipped_dup += 1
+                continue
+
+            center = Center(
+                name=data["name"],
+                address=data["address"],
+                zip_code=data["zip_code"],
+                phone=data["phone"],
+                type_center=data["type_center"],
+            )
+            db.session.add(center)
+            existing.add(key)
+            inserted += 1
+
+        db.session.commit()
+
+        # ── 5. Resumen ─────────────────────────────────────────────────────────
+        click.echo("\n── Resumen de importación ──────────────────────────────")
+        click.echo(f"  Insertados:          {inserted}")
+        click.echo(f"  Omitidos (duplicado):{skipped_dup}")
+        click.echo(f"  Omitidos (tipo):     {skipped_type}")
+        click.echo(f"  Sin nombre (error):  {errors}")
+        click.echo(f"  Total procesados:    {len(graph)}")
+        click.echo("────────────────────────────────────────────────────────")
+        if inserted > 0:
+            click.echo(f"[OK] {inserted} centros sanitarios importados correctamente.")
+        else:
+            click.echo("[OK] No se importaron centros nuevos (todos ya existían o fueron filtrados).")
