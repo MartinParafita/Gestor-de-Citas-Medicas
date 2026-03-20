@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useGlobalReducer from '../hooks/useGlobalReducer';
-import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment, getMyPatients, createPrescription, getPatientPrescriptions, createClinicalRecord, getPatientClinicalRecords } from '../services/fetch';
+import { getMyAppointmentsDoctor, updateDoctorProfile, completeAppointment, getMyPatients, createPrescription, getPatientPrescriptions, createClinicalRecord, getPatientClinicalRecords, getCenters } from '../services/fetch';
 import '../css/DoctorDashboard.css';
 
 // ── Helpers de estado ─────────────────────────────────────────────────────────
@@ -697,6 +697,7 @@ const MisPacientes = ({ patients, appointments, loading }) => {
  * Muestra los datos del médico y permite editar:
  *   - Email
  *   - Especialidad
+ *   - Centro de trabajo (selector con centros de la BD)
  *   - Días de trabajo por semana (1-7)
  *   - Contraseña (requiere ingresar la contraseña actual)
  *
@@ -710,12 +711,19 @@ const PerfilMedico = ({ user, onSave }) => {
     const [email, setEmail]         = useState(user?.email || '');
     const [specialty, setSpecialty] = useState(user?.specialty || '');
     const [workDays, setWorkDays]   = useState(user?.work_days ?? '');
+    const [centerId, setCenterId]       = useState(user?.center_id ?? '');
+    const [centers, setCenters]         = useState([]);
+    const [centerSearch, setCenterSearch] = useState('');
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword]         = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError]     = useState('');
     const [success, setSuccess] = useState('');
+
+    useEffect(() => {
+        getCenters().then(r => { if (r.success) setCenters(r.data); });
+    }, []);
 
     /**
      * handleSubmit
@@ -737,6 +745,10 @@ const PerfilMedico = ({ user, onSave }) => {
         }
         if (workDays !== '' && Number(workDays) !== user.work_days) {
             payload.work_days = Number(workDays);
+        }
+        const centerIdNum = centerId === '' ? null : Number(centerId);
+        if (centerIdNum !== (user.center_id ?? null)) {
+            payload.center_id = centerIdNum;
         }
 
         if (newPassword) {
@@ -809,6 +821,52 @@ const PerfilMedico = ({ user, onSave }) => {
                         placeholder="Ej: Cardiología"
                         style={{ display: 'block', width: '100%', marginTop: '6px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
                     />
+                </div>
+
+                {/* Centro de trabajo */}
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label><strong>Centro de trabajo</strong></label>
+                    {(() => {
+                        const filtered = centers.filter(c => {
+                            if (!centerSearch.trim()) return true;
+                            const q = centerSearch.toLowerCase();
+                            return (
+                                c.name.toLowerCase().includes(q) ||
+                                (c.zip_code    && c.zip_code.includes(q)) ||
+                                (c.type_center && c.type_center.toLowerCase().includes(q)) ||
+                                (c.address     && c.address.toLowerCase().includes(q))
+                            );
+                        });
+                        const selected = centers.find(c => String(c.id) === String(centerId));
+                        return (
+                            <>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por nombre, CP, tipo o dirección..."
+                                    value={centerSearch}
+                                    onChange={e => setCenterSearch(e.target.value)}
+                                    style={{ display: 'block', width: '100%', marginTop: '6px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc', marginBottom: '6px' }}
+                                />
+                                <select
+                                    value={centerId}
+                                    onChange={e => setCenterId(e.target.value)}
+                                    size={Math.min(filtered.length + 1, 8)}
+                                    style={{ display: 'block', width: '100%', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc' }}
+                                >
+                                    <option value="">-- Sin centro asignado --</option>
+                                    {filtered.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}{c.type_center ? ` — ${c.type_center}` : ''}{c.zip_code ? ` (${c.zip_code})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ fontSize: '0.8em', color: '#6c757d', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>{filtered.length} centro{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}</span>
+                                    {selected && <span style={{ color: '#20B2AA', fontWeight: 600 }}>Seleccionado: {selected.name}</span>}
+                                </div>
+                            </>
+                        );
+                    })()}
                 </div>
 
                 {/* Días de trabajo */}

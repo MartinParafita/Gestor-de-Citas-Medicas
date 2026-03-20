@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useGlobalReducer from '../hooks/useGlobalReducer';
-import { getMyAppointments, createAppointmentAPI, cancelAppointmentAPI, rescheduleAppointmentAPI, getDoctors, updatePatientProfile, getMyPrescriptions } from '../services/fetch';
+import { getMyAppointments, createAppointmentAPI, cancelAppointmentAPI, rescheduleAppointmentAPI, getDoctors, getCenters, updatePatientProfile, getMyPrescriptions } from '../services/fetch';
 import '../css/PatientDashboard.css';
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -56,24 +56,34 @@ const parseAPIDate = (isoString) => {
  *
  * Formulario de agendamiento con calendario interactivo.
  * Permite al paciente seleccionar médico, fecha (Lun-Vie) y hora (09:00–14:00).
- * Los días ya ocupados muestran un indicador rojo (🔴) pero siguen siendo seleccionables
- * para permitir múltiples citas en el mismo día con distintas horas.
+ * Al elegir un médico se muestra su centro asignado (solo lectura).
+ * Si el médico no tiene centro asignado, aparece un selector de centro.
+ * Los días ya ocupados muestran un indicador rojo (🔴).
  *
  * Props:
- *   patientName          {string}   - Nombre del paciente (para saludo, actualmente no usado en UI).
+ *   patientName          {string}   - Nombre del paciente.
  *   doctors              {Array}    - Lista de médicos disponibles del backend.
+ *   centers              {Array}    - Lista de centros sanitarios del backend.
  *   onConfirm            {Function} - Callback(newAppointment) al confirmar la cita exitosamente.
  *   existingAppointments {Array}    - Citas del paciente para marcar días ocupados en el calendario.
  */
-const AgendarCita = ({ patientName, doctors, onConfirm, existingAppointments }) => {
+const AgendarCita = ({ patientName, doctors, centers, onConfirm, existingAppointments }) => {
     const today = new Date();
     const [currentMonth, setCurrentMonth] = useState(today.getMonth());
     const [currentYear, setCurrentYear]   = useState(today.getFullYear());
     const [selectedDate, setSelectedDate]  = useState(null);
     const [selectedHour, setSelectedHour]  = useState(null);
     const [selectedDoctor, setSelectedDoctor] = useState('');
+    const [selectedCenter, setSelectedCenter] = useState('');
+    const [centerSearch, setCenterSearch]     = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    // Centro del médico seleccionado (null = no tiene centro asignado)
+    const doctorObj    = doctors.find(d => String(d.id) === String(selectedDoctor)) || null;
+    const doctorCenter = doctorObj && doctorObj.center_id
+        ? (centers.find(c => c.id === doctorObj.center_id) || null)
+        : null;
 
     const daysInMonth    = new Date(currentYear, currentMonth + 1, 0).getDate();
     const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay();
@@ -105,10 +115,21 @@ const AgendarCita = ({ patientName, doctors, onConfirm, existingAppointments }) 
             setError('Selecciona fecha, hora y médico.');
             return;
         }
+        // Si el médico no tiene centro asignado, el paciente debe seleccionar uno
+        const centerIdToSend = doctorCenter
+            ? doctorCenter.id
+            : (selectedCenter ? parseInt(selectedCenter) : null);
+
+        if (!doctorCenter && !selectedCenter) {
+            setError('El médico seleccionado no tiene centro asignado. Por favor selecciona un centro.');
+            return;
+        }
+
         setError('');
         setLoading(true);
         const result = await createAppointmentAPI({
-            doctor_id: parseInt(selectedDoctor),
+            doctor_id:        parseInt(selectedDoctor),
+            center_id:        centerIdToSend,
             appointment_date: formatForAPI(selectedDate, selectedHour),
         });
         setLoading(false);
@@ -140,6 +161,58 @@ const AgendarCita = ({ patientName, doctors, onConfirm, existingAppointments }) 
                     ))}
                 </select>
             </div>
+
+            {/* Centro de atención */}
+            {selectedDoctor && (
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label><strong>Centro de atención:</strong></label>
+                    {doctorCenter ? (
+                        <div style={{ marginTop: '8px', padding: '10px 14px', background: '#f0fafa', border: '1px solid #b2dfdb', borderRadius: '6px' }}>
+                            <strong>{doctorCenter.name}</strong>
+                            {doctorCenter.type_center && <span style={{ color: '#6c757d', marginLeft: '8px' }}>— {doctorCenter.type_center}</span>}
+                            {doctorCenter.address    && <div style={{ fontSize: '0.85em', color: '#6c757d', marginTop: '2px' }}>{doctorCenter.address}{doctorCenter.zip_code ? `, ${doctorCenter.zip_code}` : ''}</div>}
+                        </div>
+                    ) : (() => {
+                        const filtered = centers.filter(c => {
+                            if (!centerSearch.trim()) return true;
+                            const q = centerSearch.toLowerCase();
+                            return (
+                                c.name.toLowerCase().includes(q) ||
+                                (c.zip_code    && c.zip_code.includes(q)) ||
+                                (c.type_center && c.type_center.toLowerCase().includes(q)) ||
+                                (c.address     && c.address.toLowerCase().includes(q))
+                            );
+                        });
+                        return (
+                            <>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por nombre, CP, tipo o dirección..."
+                                    value={centerSearch}
+                                    onChange={e => setCenterSearch(e.target.value)}
+                                    style={{ display: 'block', width: '100%', marginTop: '6px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc', marginBottom: '6px' }}
+                                />
+                                <select
+                                    value={selectedCenter}
+                                    onChange={e => setSelectedCenter(e.target.value)}
+                                    size={Math.min(filtered.length + 1, 8)}
+                                    style={{ display: 'block', width: '100%', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc' }}
+                                >
+                                    <option value="">-- Selecciona un centro --</option>
+                                    {filtered.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}{c.type_center ? ` — ${c.type_center}` : ''}{c.zip_code ? ` (${c.zip_code})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ fontSize: '0.8em', color: '#6c757d', marginTop: '4px' }}>
+                                    {filtered.length} centro{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+                                </div>
+                            </>
+                        );
+                    })()}
+                </div>
+            )}
 
             <p>Paso 2: Selecciona la fecha (Lun-Vie) y la hora (9:00 a 14:00)</p>
 
@@ -864,6 +937,7 @@ const PatientDashboard = () => {
     const [openAccordion, setOpenAccordion]     = useState(null);
     const [appointments, setAppointments]       = useState([]);
     const [doctors, setDoctors]                 = useState([]);
+    const [centers, setCenters]                 = useState([]);
     const [loadingData, setLoadingData]         = useState(true);
     const [citaToReschedule, setCitaToReschedule] = useState(null);
 
@@ -874,12 +948,14 @@ const PatientDashboard = () => {
     useEffect(() => {
         const load = async () => {
             setLoadingData(true);
-            const [apptResult, docResult] = await Promise.all([
+            const [apptResult, docResult, centerResult] = await Promise.all([
                 getMyAppointments(),
                 getDoctors(),
+                getCenters(),
             ]);
-            if (apptResult.success) setAppointments(apptResult.data);
-            if (docResult.success)  setDoctors(docResult.data);
+            if (apptResult.success)   setAppointments(apptResult.data);
+            if (docResult.success)    setDoctors(docResult.data);
+            if (centerResult.success) setCenters(centerResult.data);
             setLoadingData(false);
         };
         load();
@@ -942,6 +1018,7 @@ const PatientDashboard = () => {
                     <AgendarCita
                         patientName={patientName}
                         doctors={doctors}
+                        centers={centers}
                         onConfirm={handleAppointmentConfirmed}
                         existingAppointments={appointments}
                     />
