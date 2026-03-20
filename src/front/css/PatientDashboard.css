@@ -17,7 +17,7 @@
     padding: 40px; 
 }
 .main-title { 
-    color: #007bff; 
+    color: #20B2AA; 
     margin-bottom: 30px; 
 }
 
@@ -57,8 +57,8 @@
     overflow: hidden; 
 }
 .accordion-header { 
-    background-color: #e9f5ff; 
-    color: #007bff; 
+    background-color: #e6f7f6; 
+    color: #20B2AA; 
     padding: 15px; 
     cursor: pointer; 
     display: flex; 
@@ -69,7 +69,7 @@
     transition: background-color 0.2s;
 }
 .accordion-header:hover { 
-    background-color: #d1e7ff; 
+    background-color: #d0f0ee; 
 }
 .icon { 
     font-size: 1.2em; 
@@ -113,7 +113,7 @@
 .placeholder-content {
     margin-top: 30px; 
     padding: 20px; 
-    border: 1px dashed #007bff; 
+    border: 1px dashed #20B2AA; 
     background-color: #f0f8ff;
     border-radius: 4px;
 }
@@ -153,7 +153,7 @@
 }
 
 .button-agenda {
-    background-color: #007bff; 
+    background-color: #20B2AA; 
 }
 
 .button-modificar {
@@ -173,7 +173,7 @@
 }
 
 .cita-container h2 {
-    color: #007bff;
+    color: #20B2AA;
     margin-bottom: 20px;
 }
 
@@ -233,7 +233,7 @@
 }
 
 .day-cell:not(.empty):hover {
-    background-color: #e9f5ff;
+    background-color: #e6f7f6;
 }
 
 .day-cell.empty {
@@ -263,15 +263,15 @@
 
 
 .day-cell.has-availability {
-    background-color: #d1e7ff; 
-    border-color: #007bff;
+    background-color: #d0f0ee; 
+    border-color: #20B2AA;
 }
 
 .day-cell.selected {
-    background-color: #007bff;
+    background-color: #20B2AA;
     color: white;
     font-weight: bold;
-    border-color: #007bff;
+    border-color: #20B2AA;
 }
 
 .availability-panel {
@@ -291,9 +291,9 @@
 
 .hour-button {
     padding: 10px 15px;
-    border: 1px solid #007bff;
+    border: 1px solid #20B2AA;
     background-color: white;
-    color: #007bff;
+    color: #20B2AA;
     border-radius: 5px;
     cursor: pointer;
     transition: background-color 0.2s, color 0.2s;
@@ -301,7 +301,7 @@
 }
 
 .hour-button:hover {
-    background-color: #007bff;
+    background-color: #20B2AA;
     color: white;
 }
 
@@ -358,10 +358,10 @@
 }
 
 .details-grid span {
-    background-color: #c3e6cb; 
+    background-color: #f0fafa;
     padding: 8px;
     border-radius: 4px;
-    font-weight: 500; 
+    font-weight: 500;
 }
 
 
@@ -375,7 +375,7 @@
 }
 
 .appointment-view h3 {
-    color: #007bff; 
+    color: #20B2AA; 
     margin-bottom: 15px;
     border-bottom: 1px dashed #eee;
     padding-bottom: 10px;
@@ -460,13 +460,13 @@
 
 /* Estilos para la vista de selección de centro */
 .select-center-box {
-    background-color: #e9f5ff; /* Azul muy claro para selección */
-    border: 1px solid #b8daff;
-    color: #004085;
+    background-color: #e6f7f6; /* Azul muy claro para selección */
+    border: 1px solid #b2e4e1;
+    color: #0e6b66;
 }
 
 .select-center-box h3 {
-    color: #0056b3;
+    color: #178f88;
 }
 
 .centers-list {
@@ -488,8 +488,8 @@
 
 .center-button:hover,
 .center-button.selected {
-    border-color: #007bff;
-    background-color: #cce5ff;
+    border-color: #20B2AA;
+    background-color: #d0f0ee;
     box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
@@ -619,7 +619,7 @@
 
 .info-notification {
     background-color: #d1ecf1; /* Azul claro */
-    border-left-color: #007bff; /* Azul primario */
+    border-left-color: #20B2AA; /* Azul primario */
     color: #0c5460;
 }
 
@@ -668,7 +668,7 @@
     background-color: #fff;
     font-size: 1em;
     appearance: none; /* Oculta la flecha por defecto en algunos navegadores */
-    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007bff%22%20d%3D%22M287%20197.35L146.2%2056.45%205.4%20197.35z%22%2F%3E%3C%2Fsvg%3E'); /* Flecha personalizada */
+    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2320B2AA%22%20d%3D%22M287%20197.35L146.2%2056.45%205.4%20197.35z%22%2F%3E%3C%2Fsvg%3E'); /* Flecha personalizada */
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 12px;
@@ -676,7 +676,193 @@
 }
 
 .specialty-dropdown:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    border-color: #20B2AA;
+    box-shadow: 0 0 0 3px rgba(32, 178, 170, 0.25);
     outline: none;
+}
+
+/* ── Welcome Patient ─────────────────────────────────────────────────────────── */
+
+.welcome-patient {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.welcome-section {
+    background: #fcfcfc;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 18px 22px;
+}
+
+.welcome-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.welcome-section-header h3 {
+    margin: 0;
+    font-size: 1em;
+    color: #333;
+    font-weight: 600;
+}
+
+.see-all-link {
+    background: none;
+    border: none;
+    color: #20B2AA;
+    font-size: 0.85em;
+    cursor: pointer;
+    padding: 0;
+    font-weight: 500;
+}
+
+.see-all-link:hover {
+    text-decoration: underline;
+}
+
+.welcome-empty {
+    color: #6c757d;
+    font-style: italic;
+    margin: 0;
+    font-size: 0.9em;
+}
+
+/* Sin citas próximas */
+.welcome-no-appt {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.welcome-cta-btn {
+    align-self: flex-start;
+    background: #20B2AA;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.9em;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.welcome-cta-btn:hover {
+    background: #1a9a93;
+}
+
+/* Próxima cita */
+.welcome-next-appt {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.welcome-next-date-block {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+}
+
+.welcome-next-weekday {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #333;
+    text-transform: capitalize;
+}
+
+.welcome-next-time {
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #20B2AA;
+}
+
+.welcome-next-info-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.welcome-next-doctor {
+    font-size: 0.95em;
+    color: #495057;
+}
+
+.welcome-next-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.welcome-btn-cancel {
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ffcdd2;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 0.85em;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.welcome-btn-cancel:hover {
+    background: #ffcdd2;
+}
+
+.welcome-btn-reschedule {
+    background: #e7f3ff;
+    color: #0056b3;
+    border: 1px solid #b3d7ff;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 0.85em;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.welcome-btn-reschedule:hover {
+    background: #b3d7ff;
+}
+
+/* Última receta */
+.welcome-rx-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    border-left: 4px solid #20B2AA;
+}
+
+.welcome-rx-med {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: #333;
+}
+
+.welcome-rx-dosage {
+    font-size: 0.9em;
+    color: #495057;
+}
+
+.welcome-rx-inst {
+    font-size: 0.85em;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.welcome-rx-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 0.8em;
+    color: #6c757d;
 }
