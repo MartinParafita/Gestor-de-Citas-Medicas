@@ -566,3 +566,90 @@ body {
     color: #6c757d;
     font-style: italic;
 }
+
+/* ── Welcome Doctor ─────────────────────────────────────────────────────────── */
+
+.welcome-doctor {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.welcome-section {
+    background: #fcfcfc;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 18px 22px;
+}
+
+.welcome-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.welcome-section-header h3 {
+    margin: 0;
+    font-size: 1em;
+    color: #333;
+    font-weight: 600;
+}
+
+.see-all-link {
+    background: none;
+    border: none;
+    color: #20B2AA;
+    font-size: 0.85em;
+    cursor: pointer;
+    padding: 0;
+    font-weight: 500;
+}
+
+.see-all-link:hover {
+    text-decoration: underline;
+}
+
+.welcome-empty {
+    color: #6c757d;
+    font-style: italic;
+    margin: 0;
+    font-size: 0.9em;
+}
+
+.welcome-appt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.welcome-appt-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 6px;
+}
+
+.welcome-appt-date {
+    font-size: 0.82em;
+    color: #6c757d;
+    width: 90px;
+    flex-shrink: 0;
+    text-transform: capitalize;
+}
+
+.welcome-appt-time {
+    font-weight: 700;
+    color: #20B2AA;
+    width: 48px;
+    flex-shrink: 0;
+}
+
+.welcome-appt-patient {
+    flex: 1;
+    font-size: 0.95em;
+    color: #333;
+}

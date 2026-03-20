@@ -244,16 +244,17 @@ def update_doctor_profile():
     por lo que un médico solo puede editar su propio perfil.
 
     Campos editables:
-        - email     (str) : nuevo email (opcional).
-        - specialty (str) : nueva especialidad (opcional).
-        - work_days (int) : días de trabajo por semana, entre 1 y 7 (opcional).
+        - email      (str)      : nuevo email (opcional).
+        - specialty  (str)      : nueva especialidad (opcional).
+        - center_id  (int|null) : ID del centro donde trabaja (opcional).
+        - work_days  (int)      : días de trabajo por semana, entre 1 y 7 (opcional).
         - current_password (str) + new_password (str): para cambiar contraseña (ambos requeridos juntos).
 
     Respuesta 200: datos del médico actualizados (serialize).
     Errores:
         400 — work_days fuera de rango o faltan campos para cambio de contraseña.
         401 — contraseña actual incorrecta.
-        404 — médico no encontrado.
+        404 — médico o centro no encontrado.
         409 — el nuevo email ya está en uso.
     """
     doctor_id = int(get_jwt_identity())
@@ -275,6 +276,15 @@ def update_doctor_profile():
     # ── Cambio de especialidad ─────────────────────────────────────────────────
     if 'specialty' in data:
         updates['specialty'] = data['specialty'].strip()
+
+    # ── Cambio de centro de trabajo ───────────────────────────────────────────
+    if 'center_id' in data:
+        center_id_val = data['center_id']
+        if center_id_val is not None:
+            center = Center.query.get(center_id_val)
+            if not center:
+                return jsonify({"error": "Centro no encontrado."}), 404
+        updates['center_id'] = center_id_val
 
     # ── Cambio de días de trabajo ──────────────────────────────────────────────
     if 'work_days' in data:
