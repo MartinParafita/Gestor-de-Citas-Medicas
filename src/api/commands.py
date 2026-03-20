@@ -79,28 +79,47 @@ def _extract_phone(phone_raw):
 
 def _extract_type(item):
     """
-    Determina el tipo de centro a partir del campo 'organization' o '@type'.
+    Determina el tipo de centro a partir del campo '@type' del JSON-LD (schema.org).
 
-    Intenta primero 'organization.organization-desc'; si está vacío,
-    usa el último segmento del campo '@type' (ej. 'schema:MedicalClinic' → 'MedicalClinic').
+    Se usa exclusivamente '@type' porque 'organization.organization-desc' contiene
+    una descripción larga de texto libre (con info de transporte, horarios, teléfonos)
+    que no sirve como tipo y desborda el campo String(80) del modelo Center.
+
+    El valor '@type' llega como string ('schema:Hospital') o lista (['schema:Hospital']).
+    Se toma el primer valor, se elimina el prefijo de namespace y se mapea a un
+    nombre legible en español. Si no hay mapeo conocido, se devuelve el valor sin prefijo
+    truncado a 79 caracteres.
+
+    Mapeos schema.org → español:
+        Hospital            → Hospital
+        MedicalClinic       → Centro de Salud
+        EmergencyService    → Urgencias
+        MedicalOrganization → Centro Sanitario
+        Pharmacy            → Farmacia
 
     Args:
-        item (dict): Objeto del @graph del JSON.
+        item (dict): Elemento individual del array '@graph'.
 
     Returns:
-        str: Tipo de centro normalizado, o "Centro Sanitario" como fallback.
+        str: Tipo de centro legible (máx. 79 caracteres).
     """
-    org = item.get("organization", {})
-    if isinstance(org, dict):
-        t = org.get("organization-desc", "").strip()
-        if t:
-            return t
+    # Mapeo de tipos schema.org a etiquetas en español
+    TYPE_MAP = {
+        "hospital":            "Hospital",
+        "medicalclinic":       "Centro de Salud",
+        "emergencyservice":    "Urgencias",
+        "medicalorganization": "Centro Sanitario",
+        "pharmacy":            "Farmacia",
+    }
 
     raw_type = item.get("@type", "")
-    if isinstance(raw_type, str) and raw_type:
-        return raw_type.split(":")[-1].strip()
     if isinstance(raw_type, list) and raw_type:
-        return raw_type[0].split(":")[-1].strip()
+        raw_type = raw_type[0]
+
+    if isinstance(raw_type, str) and raw_type:
+        # Eliminar namespace (ej. "schema:Hospital" → "Hospital")
+        label = raw_type.split(":")[-1].strip()
+        return TYPE_MAP.get(label.lower(), label)[:79]
 
     return "Centro Sanitario"
 
@@ -114,7 +133,7 @@ def _build_center_dict(item):
         address.street-address      → address
         address.postal-code         → zip_code
         phone / phone[].telephone   → phone
-        organization.organization-desc o @type → type_center
+        @type (schema.org)          → type_center (via _extract_type)
 
     Args:
         item (dict): Elemento individual del array '@graph'.
