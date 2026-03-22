@@ -383,6 +383,57 @@ export async function getPatientClinicalRecords(patientId) {
     }
 }
 
+// ── Documentos personales ─────────────────────────────────────────────────────
+
+/** Retorna los documentos de identidad del paciente autenticado. */
+export async function getMyDocuments() {
+    try {
+        const response = await fetch(`${BASE}/api/my/documents`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Sube o reemplaza un documento de identidad del paciente.
+ * @param {"dni"|"tarjeta_sanitaria"} docType - Tipo de documento.
+ * @param {File} file - Archivo de imagen o PDF.
+ */
+export async function uploadDocument(docType, file) {
+    try {
+        const formData = new FormData();
+        formData.append("doc_type", docType);
+        formData.append("file", file);
+        const response = await fetch(`${BASE}/api/my/documents`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getToken()}` },
+            body: formData,
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Elimina un documento de identidad del paciente autenticado.
+ * @param {"dni"|"tarjeta_sanitaria"} docType - Tipo de documento a eliminar.
+ */
+export async function deleteDocument(docType) {
+    try {
+        const response = await fetch(`${BASE}/api/my/documents/${docType}`, {
+            method: "DELETE",
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
 /** Retorna la lista pública de todos los centros médicos (no requiere autenticación). */
 export async function getCenters() {
     try {

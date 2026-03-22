@@ -1,5 +1,5 @@
 from flask import request, jsonify, Blueprint
-from api.models import db, Patient, Doctor, Appointment, Center, Prescription, ClinicalRecord
+from api.models import db, Patient, Doctor, Appointment, Center, Prescription, ClinicalRecord, PatientDocument
 from api.utils import APIException
 from flask_cors import CORS
 import bcrypt
@@ -7,6 +7,14 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from datetime import datetime
 import smtplib
 import os
+import cloudinary
+import cloudinary.uploader
+
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+)
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -735,6 +743,96 @@ def get_patient_clinical_records(patient_id):
         .all()
     )
     return jsonify([r.serialize() for r in records]), 200
+
+
+# ── Documentos personales ─────────────────────────────────────────────────────
+
+@api.route('/my/documents', methods=['GET'])
+@jwt_required()
+def get_my_documents():
+    """
+    Retorna los documentos de identidad del paciente autenticado.
+
+    Requiere JWT de paciente.
+
+    Respuesta 200: lista de documentos (serialize).
+    """
+    patient_id = int(get_jwt_identity())
+    docs = PatientDocument.query.filter_by(patient_id=patient_id).all()
+    return jsonify([d.serialize() for d in docs]), 200
+
+
+@api.route('/my/documents', methods=['POST'])
+@jwt_required()
+def upload_document():
+    """
+    Sube o reemplaza un documento de identidad del paciente.
+
+    Requiere JWT de paciente. Acepta multipart/form-data.
+
+    Campos del formulario:
+        doc_type (str)  : "dni" | "tarjeta_sanitaria".
+        file     (file) : Imagen o PDF del documento.
+
+    Respuesta 201: documento subido (serialize).
+    Errores:
+        400 — doc_type inválido o archivo faltante.
+        500 — error al subir a Cloudinary.
+    """
+    patient_id = int(get_jwt_identity())
+    doc_type = request.form.get("doc_type")
+    file = request.files.get("file")
+
+    if not doc_type or doc_type not in ("dni", "tarjeta_sanitaria"):
+        return jsonify({"error": "doc_type debe ser 'dni' o 'tarjeta_sanitaria'."}), 400
+    if not file:
+        return jsonify({"error": "Se requiere un archivo."}), 400
+
+    try:
+        result = cloudinary.uploader.upload(
+            file,
+            folder=f"gestor_citas/patient_{patient_id}",
+            public_id=doc_type,
+            overwrite=True,
+            resource_type="auto",
+        )
+    except Exception as e:
+        return jsonify({"error": f"Error al subir a Cloudinary: {str(e)}"}), 500
+
+    doc = PatientDocument.upsert(
+        patient_id=patient_id,
+        doc_type=doc_type,
+        cloudinary_url=result["secure_url"],
+        cloudinary_public_id=result["public_id"],
+    )
+    return jsonify(doc.serialize()), 201
+
+
+@api.route('/my/documents/<string:doc_type>', methods=['DELETE'])
+@jwt_required()
+def delete_document(doc_type):
+    """
+    Elimina un documento de identidad del paciente autenticado.
+
+    Requiere JWT de paciente.
+
+    Respuesta 200: mensaje de confirmación.
+    Errores:
+        404 — documento no encontrado.
+    """
+    patient_id = int(get_jwt_identity())
+    doc = PatientDocument.query.filter_by(patient_id=patient_id, doc_type=doc_type).first()
+    if not doc:
+        return jsonify({"error": "Documento no encontrado."}), 404
+
+    try:
+        cloudinary.uploader.destroy(doc.cloudinary_public_id)
+    except Exception as e:
+        print(f"[CLOUDINARY] Error al eliminar: {e}")
+
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({"msg": "Documento eliminado."}), 200
 
 
 # ── Centros ───────────────────────────────────────────────────────────────────

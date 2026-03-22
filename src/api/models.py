@@ -427,6 +427,65 @@ class ClinicalRecord(db.Model):
         return record
 
 
+class PatientDocument(db.Model):
+    """
+    Almacena los documentos de identidad del paciente subidos a Cloudinary.
+
+    Cada paciente puede tener un documento de cada tipo (upsert por patient_id + doc_type).
+
+    Campos:
+        id                   (int)      : Clave primaria.
+        patient_id           (int)      : FK al paciente.
+        doc_type             (str)      : Tipo — "dni" | "tarjeta_sanitaria".
+        cloudinary_url       (str)      : URL pública del documento en Cloudinary.
+        cloudinary_public_id (str)      : Public ID en Cloudinary (para eliminación).
+        uploaded_at          (datetime) : Fecha de última subida (UTC).
+
+    Relaciones:
+        patient : Patient propietario del documento.
+    """
+    __tablename__ = "patient_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    doc_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    cloudinary_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    cloudinary_public_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    patient: Mapped["Patient"] = relationship("Patient")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "patient_id": self.patient_id,
+            "doc_type": self.doc_type,
+            "cloudinary_url": self.cloudinary_url,
+            "uploaded_at": self.uploaded_at.isoformat() if self.uploaded_at else None,
+        }
+
+    @classmethod
+    def upsert(cls, patient_id, doc_type, cloudinary_url, cloudinary_public_id):
+        """Crea o reemplaza el documento del tipo indicado para el paciente."""
+        existing = cls.query.filter_by(patient_id=patient_id, doc_type=doc_type).first()
+        if existing:
+            existing.cloudinary_url = cloudinary_url
+            existing.cloudinary_public_id = cloudinary_public_id
+            existing.uploaded_at = datetime.utcnow()
+            db.session.commit()
+            return existing
+        doc = cls(
+            patient_id=patient_id,
+            doc_type=doc_type,
+            cloudinary_url=cloudinary_url,
+            cloudinary_public_id=cloudinary_public_id,
+            uploaded_at=datetime.utcnow(),
+        )
+        db.session.add(doc)
+        db.session.commit()
+        return doc
+
+
 class Center(db.Model):
     """
     Representa un centro médico o clínica.
