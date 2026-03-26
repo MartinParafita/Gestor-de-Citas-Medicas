@@ -486,6 +486,74 @@ class PatientDocument(db.Model):
         return doc
 
 
+class MedicalReport(db.Model):
+    """
+    Representa un informe médico o resultado de laboratorio subido por un médico para un paciente.
+
+    Los informes son de solo escritura: una vez creados no pueden editarse ni eliminarse.
+    El archivo se almacena en Cloudinary.
+
+    Campos:
+        id                   (int)      : Clave primaria.
+        doctor_id            (int)      : FK al médico que sube el informe.
+        patient_id           (int)      : FK al paciente destinatario.
+        title                (str)      : Título descriptivo (ej: "Análisis de sangre").
+        report_type          (str)      : Tipo — "laboratorio" | "imagen" | "otro".
+        cloudinary_url       (str)      : URL pública del archivo en Cloudinary.
+        cloudinary_public_id (str)      : Public ID en Cloudinary.
+        notes                (str|None) : Observaciones del médico (opcional).
+        created_at           (datetime) : Fecha de subida (UTC).
+
+    Relaciones:
+        doctor  : Doctor que subió el informe.
+        patient : Patient destinatario.
+    """
+    __tablename__ = "medical_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False, index=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    report_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    cloudinary_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    cloudinary_public_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[str] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    doctor: Mapped["Doctor"] = relationship("Doctor")
+    patient: Mapped["Patient"] = relationship("Patient")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "doctor_id": self.doctor_id,
+            "patient_id": self.patient_id,
+            "title": self.title,
+            "report_type": self.report_type,
+            "cloudinary_url": self.cloudinary_url,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "doctor_name": f"{self.doctor.first_name} {self.doctor.last_name}" if self.doctor else None,
+            "patient_name": f"{self.patient.first_name} {self.patient.last_name}" if self.patient else None,
+        }
+
+    @classmethod
+    def create(cls, doctor_id, patient_id, title, report_type, cloudinary_url, cloudinary_public_id, notes=None):
+        report = cls(
+            doctor_id=doctor_id,
+            patient_id=patient_id,
+            title=title,
+            report_type=report_type,
+            cloudinary_url=cloudinary_url,
+            cloudinary_public_id=cloudinary_public_id,
+            notes=notes,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(report)
+        db.session.commit()
+        return report
+
+
 class Center(db.Model):
     """
     Representa un centro médico o clínica.

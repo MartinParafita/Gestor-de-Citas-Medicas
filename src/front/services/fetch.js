@@ -434,6 +434,58 @@ export async function deleteDocument(docType) {
     }
 }
 
+// ── Informes médicos ──────────────────────────────────────────────────────────
+
+/** Retorna todos los informes del paciente autenticado, más recientes primero. */
+export async function getMyReports() {
+    try {
+        const response = await fetch(`${BASE}/api/my/reports`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Sube un nuevo informe médico para un paciente. Solo médicos autenticados.
+ * @param {{ patientId: number, title: string, reportType: string, notes?: string, file: File }} params
+ */
+export async function uploadReport({ patientId, title, reportType, notes, file }) {
+    try {
+        const formData = new FormData();
+        formData.append("patient_id", patientId);
+        formData.append("title", title);
+        formData.append("report_type", reportType);
+        if (notes) formData.append("notes", notes);
+        formData.append("file", file);
+        const response = await fetch(`${BASE}/api/report`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getToken()}` },
+            body: formData,
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Retorna los informes subidos por el médico autenticado para un paciente.
+ * @param {number} patientId
+ */
+export async function getPatientReports(patientId) {
+    try {
+        const response = await fetch(`${BASE}/api/patient/${patientId}/reports`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
 /** Retorna la lista pública de todos los centros médicos (no requiere autenticación). */
 export async function getCenters() {
     try {
