@@ -6,6 +6,16 @@ from api.services.cloudinary import upload_file, destroy_file
 from . import api
 
 
+def _detect_resource_type(file):
+    mime = (file.mimetype or "").lower()
+    filename = (file.filename or "").lower()
+    if mime == "application/pdf" or filename.endswith(".pdf"):
+        return "raw"
+    if mime.startswith("image/"):
+        return "image"
+    return "auto"
+
+
 @api.route('/my/documents', methods=['GET'])
 @jwt_required()
 def get_my_documents():
@@ -53,6 +63,7 @@ def upload_document():
             folder=f"gestor_citas/patient_{patient_id}",
             public_id=doc_type,
             overwrite=True,
+            resource_type=_detect_resource_type(file),
         )
     except Exception as e:
         return jsonify({"error": f"Error al subir a Cloudinary: {str(e)}"}), 500

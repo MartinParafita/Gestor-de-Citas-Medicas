@@ -8,6 +8,16 @@ from . import api
 VALID_REPORT_TYPES = ("laboratorio", "imagen", "otro")
 
 
+def _detect_resource_type(file):
+    mime = (file.mimetype or "").lower()
+    filename = (file.filename or "").lower()
+    if mime == "application/pdf" or filename.endswith(".pdf"):
+        return "raw"
+    if mime.startswith("image/"):
+        return "image"
+    return "auto"
+
+
 @api.route('/report', methods=['POST'])
 @jwt_required()
 def upload_report():
@@ -55,6 +65,7 @@ def upload_report():
         result = upload_file(
             file,
             folder=f"gestor_citas/reports/patient_{patient_id}",
+            resource_type=_detect_resource_type(file),
         )
     except Exception as e:
         return jsonify({"error": f"Error al subir a Cloudinary: {str(e)}"}), 500

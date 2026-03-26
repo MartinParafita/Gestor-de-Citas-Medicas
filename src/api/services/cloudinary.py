@@ -21,7 +21,17 @@ def upload_file(file, folder, **kwargs):
 
 def destroy_file(public_id):
     """Elimina un archivo de Cloudinary por su public_id."""
-    try:
-        cloudinary.uploader.destroy(public_id)
-    except Exception as e:
-        print(f"[CLOUDINARY] Error al eliminar {public_id}: {e}")
+    # Intentamos en ambos tipos habituales para soportar imágenes y PDFs/raw.
+    for resource_type in ("image", "raw"):
+        try:
+            result = cloudinary.uploader.destroy(
+                public_id,
+                resource_type=resource_type,
+                invalidate=True,
+            )
+            if result.get("result") in ("ok", "not found"):
+                return result
+        except Exception:
+            continue
+
+    return {"result": "error"}
