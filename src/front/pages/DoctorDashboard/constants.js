@@ -20,11 +20,11 @@ export const doctorMenuData = [
     },
     { title: '2. Información de pacientes', icon: '📄', links: [{ name: 'Mis pacientes', view: 'mis-pacientes' }] },
     { title: '3. Prescripciones', icon: '✍️', links: [{ name: 'Ver recetas por paciente', view: 'mis-pacientes' }] },
-    { title: '4. Comunicación', icon: '💬', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '4. Comunicación', icon: '💬', links: [{ name: 'Mensajería clínica', view: 'comunicacion' }] },
     { title: '5. Reportes y estadísticas', icon: '📈', links: [{ name: 'Mis estadísticas', view: 'reportes' }] },
     {
         title: '6. Administración y perfil', icon: '⚙️',
         links: [{ name: 'Mi perfil', view: 'perfil' }],
     },
-    { title: '7. Telemedicina', icon: '💻', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '7. Telemedicina', icon: '💻', links: [{ name: 'Sala virtual', view: 'telemedicina' }] },
 ];

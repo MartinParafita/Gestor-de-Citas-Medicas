@@ -3,8 +3,8 @@ import { Layout } from "./pages/Layout";
 import { Home } from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import PatientDashboard from "./pages/PatientDashboard";
-import DoctorDashboard from "./pages/DoctorDashboard";
+import PatientDashboard from "./pages/PatientDashboard/index.jsx";
+import DoctorDashboard from "./pages/DoctorDashboard/index.jsx";
 
 export const router = createBrowserRouter(
     createRoutesFromElements(

@@ -26,6 +26,7 @@ flask = "*"
 flask-jwt-extended = "*"
 colorama = "*"
 requests = "*"
+cloudinary = "*"
 
 [requires]
 python_version = "3.13"

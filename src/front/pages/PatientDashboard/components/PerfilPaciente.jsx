@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { updatePatientProfile } from '../../../services/fetch';
+import React, { useState, useEffect } from 'react';
+import { updatePatientProfile, getMyHeadDoctors } from '../../../services/fetch';
 
 /**
  * PerfilPaciente
@@ -27,9 +27,26 @@ const PerfilPaciente = ({ user, onSave }) => {
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword]         = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [headDoctors, setHeadDoctors]         = useState([]);
+    const [selectedHeadDoctor, setSelectedHeadDoctor] = useState(
+        user?.assign_doctor ? String(user.assign_doctor) : ''
+    );
     const [loading, setLoading]   = useState(false);
+    const [loadingDoctors, setLoadingDoctors] = useState(true);
     const [error, setError]       = useState('');
     const [success, setSuccess]   = useState('');
+
+    useEffect(() => {
+        const loadHeadDoctors = async () => {
+            setLoadingDoctors(true);
+            const result = await getMyHeadDoctors();
+            if (result.success) {
+                setHeadDoctors(result.data || []);
+            }
+            setLoadingDoctors(false);
+        };
+        loadHeadDoctors();
+    }, []);
 
     /**
      * handleSubmit
@@ -54,6 +71,11 @@ const PerfilPaciente = ({ user, onSave }) => {
             if (formatted !== user.birth_date) {
                 payload.birth_date = birthDate; // el backend acepta "YYYY-MM-DD"
             }
+        }
+
+        const currentAssign = user?.assign_doctor ? String(user.assign_doctor) : '';
+        if (selectedHeadDoctor !== currentAssign) {
+            payload.assign_doctor = selectedHeadDoctor ? Number(selectedHeadDoctor) : null;
         }
 
         if (newPassword) {
@@ -123,6 +145,27 @@ const PerfilPaciente = ({ user, onSave }) => {
                         onChange={e => setBirthDate(e.target.value)}
                         style={{ display: 'block', marginTop: '6px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
                     />
+                </div>
+
+                {/* Médico de cabecera */}
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label><strong>Médico de cabecera</strong></label>
+                    <select
+                        value={selectedHeadDoctor}
+                        onChange={e => setSelectedHeadDoctor(e.target.value)}
+                        disabled={loadingDoctors}
+                        style={{ display: 'block', width: '100%', marginTop: '6px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc' }}
+                    >
+                        <option value="">-- Sin médico de cabecera --</option>
+                        {headDoctors.map((d) => (
+                            <option key={d.id} value={String(d.id)}>
+                                Dr/a. {d.first_name} {d.last_name}{d.specialty ? ` - ${d.specialty}` : ''}
+                            </option>
+                        ))}
+                    </select>
+                    <p style={{ marginTop: '6px', color: '#6c757d', fontSize: '0.85em' }}>
+                        Solo puedes elegir médicos con los que ya hayas tenido una cita.
+                    </p>
                 </div>
 
                 {/* Cambio de contraseña */}

@@ -10,6 +10,8 @@ import PerfilPaciente       from './components/PerfilPaciente';
 import MisRecetas           from './components/MisRecetas';
 import ResultadosInformes   from './components/ResultadosInformes';
 import DocumentosPersonales from './components/DocumentosPersonales';
+import FacturacionSeguros   from './components/FacturacionSeguros';
+import ComunicacionPaciente from './components/ComunicacionPaciente';
 import WelcomePatient       from './components/WelcomePatient';
 import { patientMenuData }  from './constants';
 
@@ -32,7 +34,8 @@ import { patientMenuData }  from './constants';
  *   "perfil"               → PerfilPaciente (editar email, fecha de nacimiento y contraseña).
  *   "resultados-informes"  → ResultadosInformes (informes médicos subidos por médicos).
  *   "documentos-personales"→ DocumentosPersonales (DNI y tarjeta sanitaria).
- *   "placeholder"          → Vista temporal para secciones en desarrollo.
+ *   "facturacion-seguros"  → FacturacionSeguros (resumen de cobertura y facturas).
+ *   "comunicacion"         → ComunicacionPaciente (mensajeria en preparacion).
  */
 const PatientDashboard = () => {
     const { store, dispatch } = useGlobalReducer();
@@ -146,6 +149,10 @@ const PatientDashboard = () => {
                 return <ResultadosInformes />;
             case 'documentos-personales':
                 return <DocumentosPersonales />;
+            case 'facturacion-seguros':
+                return <FacturacionSeguros />;
+            case 'comunicacion':
+                return <ComunicacionPaciente />;
             case 'placeholder':
                 return (
                     <div className="placeholder-content">

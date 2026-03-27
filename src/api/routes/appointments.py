@@ -2,8 +2,51 @@ from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 
-from api.models import db, Patient, Doctor, Appointment
+from api.models import db, Patient, Doctor, Appointment, BillingItem, InsurancePolicy
 from . import api
+
+DEFAULT_APPOINTMENT_FEE = 50.0
+
+
+def _create_billing_item_for_completed_appointment(appt):
+    """
+    Genera un cargo automático al completar una cita.
+
+    Reglas:
+      - Si ya existe cargo para la cita, no crea otro.
+      - Si el paciente tiene póliza activa, aplica cobertura.
+      - Si cobertura es 100%, crea cargo de 0 EUR para trazabilidad.
+      - Si no hay póliza activa, cobra tarifa completa.
+    """
+    existing = BillingItem.query.filter_by(
+        patient_id=appt.patient_id,
+        appointment_id=appt.id,
+    ).first()
+    if existing:
+        return existing
+
+    policy = InsurancePolicy.query.filter_by(
+        patient_id=appt.patient_id,
+        is_active=True,
+    ).first()
+
+    coverage = policy.coverage_percent if policy else 0
+    coverage = max(0, min(100, int(coverage)))
+    copay_ratio = (100 - coverage) / 100.0
+    amount = round(DEFAULT_APPOINTMENT_FEE * copay_ratio, 2)
+
+    if amount == 0:
+        concept = "Consulta médica (cobertura total)"
+    else:
+        concept = "Consulta médica (copago)"
+
+    return BillingItem.create(
+        patient_id=appt.patient_id,
+        appointment_id=appt.id,
+        concept=concept,
+        amount=amount,
+        currency="EUR",
+    )
 
 
 @api.route('/appointments/patient', methods=['GET'])
@@ -163,6 +206,7 @@ def complete_appointment(appointment_id):
         return jsonify({"error": f"La cita ya está en estado '{appt.status}'."}), 409
 
     appt.update(status="Completed")
+    _create_billing_item_for_completed_appointment(appt)
     return jsonify(appt.serialize()), 200
 
 

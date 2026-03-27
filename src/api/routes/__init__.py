@@ -6,4 +6,4 @@ CORS(api)
 
 # Importar módulos al final para evitar imports circulares.
 # Cada módulo usa el Blueprint `api` definido arriba.
-from . import auth, patients, doctors, appointments, prescriptions, clinical_records, documents, reports, centers
+from . import auth, patients, doctors, appointments, prescriptions, clinical_records, documents, reports, centers, communications, billing

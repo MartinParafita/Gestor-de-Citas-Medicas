@@ -27,8 +27,8 @@ export const patientMenuData = [
     },
     { title: '2. Resultados e informes', icon: '🔬', links: [{ name: 'Mis informes', view: 'resultados-informes' }] },
     { title: '3. Prescripciones', icon: '💊', links: [{ name: 'Mis recetas', view: 'mis-recetas' }] },
-    { title: '4. Facturación y seguros', icon: '💳', links: [{ name: 'Próximamente', view: 'placeholder' }] },
-    { title: '5. Comunicación', icon: '💬', links: [{ name: 'Próximamente', view: 'placeholder' }] },
+    { title: '4. Facturación y seguros', icon: '💳', links: [{ name: 'Mi cobertura y facturas', view: 'facturacion-seguros' }] },
+    { title: '5. Comunicación', icon: '💬', links: [{ name: 'Mensajería', view: 'comunicacion' }] },
     { title: '6. Documentos personales', icon: '📁', links: [{ name: 'Mis documentos', view: 'documentos-personales' }] },
     { title: '7. Perfil y configuración', icon: '⚙️', links: [{ name: 'Mi perfil', view: 'perfil' }] },
 ];

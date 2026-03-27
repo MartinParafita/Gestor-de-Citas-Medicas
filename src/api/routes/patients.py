@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import date
 import bcrypt
 
-from api.models import Patient
+from api.models import Patient, Doctor, Appointment
 from . import api
 
 
@@ -54,6 +54,7 @@ def update_patient_profile():
     Campos editables:
         email            (str)  : Nuevo email (opcional).
         birth_date       (str)  : Nueva fecha de nacimiento YYYY-MM-DD (opcional).
+        assign_doctor    (int|null): Medico de cabecera elegido por el paciente.
         current_password (str) + new_password (str): Ambos requeridos para cambiar contraseña.
 
     Respuesta 200: datos actualizados (serialize).
@@ -81,6 +82,30 @@ def update_patient_profile():
     if 'birth_date' in data:
         updates['birth_date'] = date.fromisoformat(data['birth_date'])
 
+    if 'assign_doctor' in data:
+        assign_doctor = data.get('assign_doctor')
+        if assign_doctor is None:
+            updates['assign_doctor'] = None
+        else:
+            doctor = Doctor.query.get(int(assign_doctor))
+            if not doctor:
+                return jsonify({"error": "Médico no encontrado."}), 404
+
+            # El paciente solo puede elegir como cabecera un medico con cita pasada no cancelada.
+            had_past_appointment = (
+                Appointment.query
+                .filter(
+                    Appointment.patient_id == patient_id,
+                    Appointment.doctor_id == int(assign_doctor),
+                    Appointment.status != "Cancelled",
+                    Appointment.appointment_date.isnot(None),
+                )
+                .first()
+            )
+            if not had_past_appointment:
+                return jsonify({"error": "Solo puedes elegir como cabecera un médico con el que ya tuviste cita."}), 403
+            updates['assign_doctor'] = int(assign_doctor)
+
     if 'new_password' in data or 'current_password' in data:
         current_pw = data.get('current_password', '')
         new_pw     = data.get('new_password', '')
@@ -92,6 +117,43 @@ def update_patient_profile():
 
     patient.update(**updates)
     return jsonify(patient.serialize()), 200
+
+
+@api.route('/profile/patient/head-doctors', methods=['GET'])
+@jwt_required()
+def get_patient_head_doctors():
+    """
+    Retorna medicos elegibles para ser medico de cabecera:
+    medicos con los que el paciente ya tuvo al menos una cita no cancelada.
+    """
+    patient_id = int(get_jwt_identity())
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({"error": "Paciente no encontrado."}), 404
+
+    appointments = (
+        Appointment.query
+        .filter(
+            Appointment.patient_id == patient_id,
+            Appointment.status != "Cancelled",
+            Appointment.doctor_id.isnot(None),
+        )
+        .order_by(Appointment.appointment_date.desc())
+        .all()
+    )
+
+    doctors_map = {}
+    for appt in appointments:
+        if appt.doctor and appt.doctor_id not in doctors_map:
+            doctors_map[appt.doctor_id] = {
+                "id": appt.doctor.id,
+                "first_name": appt.doctor.first_name,
+                "last_name": appt.doctor.last_name,
+                "specialty": appt.doctor.specialty,
+                "last_appointment_date": appt.appointment_date.isoformat() if appt.appointment_date else None,
+            }
+
+    return jsonify(list(doctors_map.values())), 200
 
 
 @api.route('/patient/<int:patient_id>/inactive_patient', methods=['PUT'])

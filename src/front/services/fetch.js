@@ -486,6 +486,172 @@ export async function getPatientReports(patientId) {
     }
 }
 
+/** Retorna medicos elegibles para medico de cabecera del paciente autenticado. */
+export async function getMyHeadDoctors() {
+    try {
+        const response = await fetch(`${BASE}/api/profile/patient/head-doctors`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+// -- Comunicacion paciente-medico -------------------------------------------------
+
+/**
+ * Crea una solicitud de comunicacion por parte del paciente.
+ * @param {{ doctorId: number, category: string, subject: string, message: string }} data
+ */
+export async function createCommunicationRequest({ doctorId, category, subject, message }) {
+    try {
+        const response = await fetch(`${BASE}/api/communication/request`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({
+                doctor_id: doctorId,
+                category,
+                subject,
+                message,
+            }),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/** Retorna los medicos contactables por el paciente (solo con cita pasada). */
+export async function getMyCommunicationDoctors() {
+    try {
+        const response = await fetch(`${BASE}/api/communication/my-doctors`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/** Retorna las solicitudes de comunicacion del paciente autenticado. */
+export async function getMyCommunicationRequests() {
+    try {
+        const response = await fetch(`${BASE}/api/communication/my-requests`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Retorna la bandeja de solicitudes del medico autenticado.
+ * @param {"open"|"responded"|"closed"|""} status
+ */
+export async function getDoctorCommunicationRequests(status = "") {
+    try {
+        const query = status ? `?status=${encodeURIComponent(status)}` : "";
+        const response = await fetch(`${BASE}/api/communication/doctor/requests${query}`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Permite al medico responder una solicitud.
+ * @param {number} ticketId
+ * @param {string} responseText
+ */
+export async function respondCommunicationRequest(ticketId, responseText) {
+    try {
+        const response = await fetch(`${BASE}/api/communication/request/${ticketId}/respond`, {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify({ response: responseText }),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/**
+ * Cierra una solicitud de comunicacion.
+ * @param {number} ticketId
+ * @param {"paciente"|"doctor"} role
+ */
+export async function closeCommunicationRequest(ticketId, role) {
+    try {
+        const response = await fetch(`${BASE}/api/communication/request/${ticketId}/close`, {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify({ role }),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+// -- Facturacion y seguros ---------------------------------------------------------
+
+/** Retorna la poliza del paciente autenticado (o null). */
+export async function getMyInsurance() {
+    try {
+        const response = await fetch(`${BASE}/api/my/insurance`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/** Crea/actualiza la poliza del paciente autenticado. */
+export async function upsertMyInsurance(data) {
+    try {
+        const response = await fetch(`${BASE}/api/my/insurance`, {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify(data),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/** Retorna los cargos/facturas del paciente autenticado. */
+export async function getMyBillingItems(status = "") {
+    try {
+        const query = status ? `?status=${encodeURIComponent(status)}` : "";
+        const response = await fetch(`${BASE}/api/my/billing-items${query}`, {
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
+/** Marca un cargo como pagado. */
+export async function payMyBillingItem(itemId) {
+    try {
+        const response = await fetch(`${BASE}/api/my/billing-items/${itemId}/pay`, {
+            method: "PUT",
+            headers: authHeaders(),
+        });
+        return handleResponse(response);
+    } catch {
+        return { success: false, message: "Error de conexión" };
+    }
+}
+
 /** Retorna la lista pública de todos los centros médicos (no requiere autenticación). */
 export async function getCenters() {
     try {

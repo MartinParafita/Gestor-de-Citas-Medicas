@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import String, Boolean, Integer, ForeignKey, DateTime, Date, create_engine
+from sqlalchemy import String, Boolean, Integer, ForeignKey, DateTime, Date, Numeric, create_engine
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime, date
 import bcrypt
@@ -85,7 +85,9 @@ class Patient(db.Model):
         db.session.commit()
         return new_patient
     
-    def update(self, email=None, password=None, assign_doctor=None, birth_date=None):
+    _UNSET = object()
+
+    def update(self, email=None, password=None, assign_doctor=_UNSET, birth_date=None):
         """
         Actualiza los campos del paciente que se reciban como argumento.
         Solo modifica los campos que no sean None.
@@ -100,7 +102,7 @@ class Patient(db.Model):
             self.email = email
         if password is not None:
             self.password = password
-        if assign_doctor is not None:
+        if assign_doctor is not self._UNSET:
             self.assign_doctor = assign_doctor
         if birth_date is not None:
             self.birth_date = birth_date
@@ -552,6 +554,191 @@ class MedicalReport(db.Model):
         db.session.add(report)
         db.session.commit()
         return report
+
+
+class CommunicationTicket(db.Model):
+    """
+    Solicitud de comunicacion asincronica entre paciente y medico.
+
+    Flujo:
+      - El paciente crea una solicitud (status: "open").
+      - El medico responde (status: "responded").
+      - Paciente o medico pueden cerrarla (status: "closed").
+    """
+    __tablename__ = "communication_tickets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(String(2000), nullable=False)
+    doctor_response: Mapped[str] = mapped_column(String(2000), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    responded_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    patient: Mapped["Patient"] = relationship("Patient")
+    doctor: Mapped["Doctor"] = relationship("Doctor")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "patient_id": self.patient_id,
+            "doctor_id": self.doctor_id,
+            "category": self.category,
+            "subject": self.subject,
+            "message": self.message,
+            "doctor_response": self.doctor_response,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "responded_at": self.responded_at.isoformat() if self.responded_at else None,
+            "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+            "patient_name": f"{self.patient.first_name} {self.patient.last_name}" if self.patient else None,
+            "doctor_name": f"{self.doctor.first_name} {self.doctor.last_name}" if self.doctor else None,
+        }
+
+    @classmethod
+    def create(cls, patient_id, doctor_id, category, subject, message):
+        ticket = cls(
+            patient_id=patient_id,
+            doctor_id=doctor_id,
+            category=category,
+            subject=subject,
+            message=message,
+            status="open",
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(ticket)
+        db.session.commit()
+        return ticket
+
+    def respond(self, response_text):
+        self.doctor_response = response_text
+        self.status = "responded"
+        self.responded_at = datetime.utcnow()
+        db.session.commit()
+        return self
+
+    def close(self):
+        self.status = "closed"
+        self.closed_at = datetime.utcnow()
+        db.session.commit()
+        return self
+
+
+class InsurancePolicy(db.Model):
+    """
+    Poliza/seguro del paciente (un registro activo por paciente).
+    """
+    __tablename__ = "insurance_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, unique=True, index=True)
+    provider_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    policy_number: Mapped[str] = mapped_column(String(120), nullable=False)
+    plan_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    coverage_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    patient: Mapped["Patient"] = relationship("Patient")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "patient_id": self.patient_id,
+            "provider_name": self.provider_name,
+            "policy_number": self.policy_number,
+            "plan_name": self.plan_name,
+            "coverage_percent": self.coverage_percent,
+            "is_active": self.is_active,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def upsert(cls, patient_id, provider_name, policy_number, plan_name=None, coverage_percent=0, is_active=True):
+        policy = cls.query.filter_by(patient_id=patient_id).first()
+        if policy:
+            policy.provider_name = provider_name
+            policy.policy_number = policy_number
+            policy.plan_name = plan_name
+            policy.coverage_percent = coverage_percent
+            policy.is_active = is_active
+            policy.updated_at = datetime.utcnow()
+            db.session.commit()
+            return policy
+
+        policy = cls(
+            patient_id=patient_id,
+            provider_name=provider_name,
+            policy_number=policy_number,
+            plan_name=plan_name,
+            coverage_percent=coverage_percent,
+            is_active=is_active,
+            updated_at=datetime.utcnow(),
+        )
+        db.session.add(policy)
+        db.session.commit()
+        return policy
+
+
+class BillingItem(db.Model):
+    """
+    Cargo/factura del paciente.
+    """
+    __tablename__ = "billing_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    appointment_id: Mapped[int] = mapped_column(Integer, ForeignKey("appointments.id"), nullable=True, index=True)
+    concept: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pendiente", index=True)
+    due_date: Mapped[date] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    patient: Mapped["Patient"] = relationship("Patient")
+    appointment: Mapped["Appointment"] = relationship("Appointment")
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "patient_id": self.patient_id,
+            "appointment_id": self.appointment_id,
+            "concept": self.concept,
+            "amount": float(self.amount) if self.amount is not None else 0,
+            "currency": self.currency,
+            "status": self.status,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "paid_at": self.paid_at.isoformat() if self.paid_at else None,
+        }
+
+    @classmethod
+    def create(cls, patient_id, concept, amount, currency="EUR", appointment_id=None, due_date=None):
+        item = cls(
+            patient_id=patient_id,
+            appointment_id=appointment_id,
+            concept=concept,
+            amount=amount,
+            currency=currency,
+            status="pendiente",
+            due_date=due_date,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(item)
+        db.session.commit()
+        return item
+
+    def mark_paid(self):
+        self.status = "pagado"
+        self.paid_at = datetime.utcnow()
+        db.session.commit()
+        return self
 
 
 class Center(db.Model):

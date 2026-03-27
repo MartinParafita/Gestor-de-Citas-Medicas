@@ -11,10 +11,11 @@ cloudinary.config(
 
 def upload_file(file, folder, **kwargs):
     """Sube un archivo a Cloudinary. Retorna el resultado del upload."""
+    resource_type = kwargs.pop("resource_type", "auto")
     return cloudinary.uploader.upload(
         file,
         folder=folder,
-        resource_type="auto",
+        resource_type=resource_type,
         **kwargs,
     )
 

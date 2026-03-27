@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+ï»¿import React, { useState, useEffect } from 'react';
 import useGlobalReducer from '../../hooks/useGlobalReducer';
 import { getMyAppointmentsDoctor, completeAppointment, getMyPatients } from '../../services/fetch';
 import '../../css/DoctorDashboard.css';
@@ -9,40 +9,34 @@ import MisPacientes from './components/MisPacientes';
 import PerfilMedico from './components/PerfilMedico';
 import WelcomeDoctor from './components/WelcomeDoctor';
 import Reportes from './components/Reportes';
+import ComunicacionDoctor from './components/ComunicacionDoctor';
+import Telemedicina from './components/Telemedicina';
 import { doctorMenuData } from './constants';
 
 /**
  * DoctorDashboard
  *
- * Componente raíz del panel del médico. Gestiona:
+ * Componente raiz del panel del medico. Gestiona:
  *   - Carga inicial de citas al montar.
  *   - Carga lazy de pacientes (solo cuando se navega a "mis-pacientes").
- *   - Estado de navegación entre vistas (currentView).
- *   - Menú lateral en acordeón (doctorMenuData).
- *   - Botones de acceso rápido para las acciones más frecuentes.
- *   - Sincronización del store global al guardar el perfil.
- *
- * Vistas disponibles:
- *   "welcome"          -> Resumen del día (citas de hoy y total activas).
- *   "agenda-hoy"       -> AgendaHoy (citas de hoy y próximas + marcar como completada).
- *   "historial-citas"  -> HistorialCitas (todas las citas del médico).
- *   "mis-pacientes"    -> MisPacientes -> FichaPaciente (detalle con recetas e historia clínica).
- *   "perfil"           -> PerfilMedico (editar email, especialidad, días de trabajo y contraseña).
- *   "placeholder"      -> Vista temporal para secciones en desarrollo.
+ *   - Estado de navegacion entre vistas (currentView).
+ *   - Menu lateral en acordeon (doctorMenuData).
+ *   - Botones de acceso rapido para las acciones mas frecuentes.
+ *   - Sincronizacion del store global al guardar el perfil.
  */
 const DoctorDashboard = () => {
     const { store, dispatch } = useGlobalReducer();
-    const [currentView, setCurrentView]     = useState('welcome');
+    const [currentView, setCurrentView] = useState('welcome');
     const [openAccordion, setOpenAccordion] = useState(null);
-    const [appointments, setAppointments]   = useState([]);
-    const [loadingData, setLoadingData]     = useState(true);
-    const [patients, setPatients]           = useState([]);
+    const [appointments, setAppointments] = useState([]);
+    const [loadingData, setLoadingData] = useState(true);
+    const [patients, setPatients] = useState([]);
     const [loadingPatients, setLoadingPatients] = useState(false);
     const [patientsFetched, setPatientsFetched] = useState(false);
 
     const doctorName = store.user
         ? `Dr/a. ${store.user.first_name} ${store.user.last_name}`
-        : 'Médico';
+        : 'MÃ©dico';
 
     useEffect(() => {
         const load = async () => {
@@ -54,20 +48,10 @@ const DoctorDashboard = () => {
         load();
     }, []);
 
-    /**
-     * handleProfileSave
-     * Recibe los datos actualizados del médico desde PerfilMedico
-     * y los sincroniza en el store global.
-     */
     const handleProfileSave = (updatedUser) => {
         dispatch({ type: 'update_user', payload: updatedUser });
     };
 
-    /**
-     * loadPatients
-     * Carga la lista de pacientes del médico desde la API.
-     * Solo hace la petición una vez (se guarda en patientsFetched).
-     */
     const loadPatients = async () => {
         if (patientsFetched) return;
         setLoadingPatients(true);
@@ -81,13 +65,6 @@ const DoctorDashboard = () => {
         if (currentView === 'mis-pacientes' || currentView === 'reportes') loadPatients();
     }, [currentView]);
 
-    /**
-     * handleComplete
-     * Llama a la API para marcar una cita como completada.
-     * Si tiene éxito, actualiza el estado local de la cita sin recargar.
-     *
-     * @param {number} appointmentId - ID de la cita a completar.
-     */
     const handleComplete = async (appointmentId) => {
         const result = await completeAppointment(appointmentId);
         if (result.success) {
@@ -111,13 +88,10 @@ const DoctorDashboard = () => {
                 return <Reportes appointments={appointments} patients={patients} />;
             case 'perfil':
                 return <PerfilMedico user={store.user} onSave={handleProfileSave} />;
-            case 'placeholder':
-                return (
-                    <div className="placeholder-content-doctor">
-                        <h3>?? Próximamente</h3>
-                        <p>Esta sección está en desarrollo.</p>
-                    </div>
-                );
+            case 'comunicacion':
+                return <ComunicacionDoctor />;
+            case 'telemedicina':
+                return <Telemedicina />;
             default:
                 return <WelcomeDoctor appointments={appointments} onComplete={handleComplete} onNavigate={setCurrentView} />;
         }
@@ -126,7 +100,7 @@ const DoctorDashboard = () => {
     return (
         <div className="dashboard-container">
             <div className="sidebar">
-                <h2 className="main-title-doctor">????? Panel del Médico</h2>
+                <h2 className="main-title-doctor">ğŸ‘¨â€âš•ï¸ Panel del MÃ©dico</h2>
 
                 {doctorMenuData.map((item) => {
                     const isOpen = openAccordion === item.title;
@@ -155,34 +129,34 @@ const DoctorDashboard = () => {
 
             <div className="content">
                 <h1>Bienvenido, {doctorName}</h1>
-                <p>Gestiona tu agenda y tus pacientes desde aquí.</p>
+                <p>Gestiona tu agenda y tus pacientes desde aquÃ­.</p>
 
                 <div className="quick-access-buttons" style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                     <button
                         className="quick-button button-agenda"
                         onClick={() => setCurrentView('agenda-hoy')}
                     >
-                        <span className="button-icon">??</span> Agenda hoy
+                        <span className="button-icon">ğŸ“…</span> Agenda hoy
                     </button>
                     <button
                         className="quick-button button-modificar"
                         onClick={() => setCurrentView('historial-citas')}
                     >
-                        <span className="button-icon">??</span> Historial
+                        <span className="button-icon">ğŸ“‹</span> Historial
                     </button>
                     <button
                         className="quick-button"
                         style={{ backgroundColor: '#20B2AA', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}
                         onClick={() => setCurrentView('mis-pacientes')}
                     >
-                        <span className="button-icon">??</span> Mis pacientes
+                        <span className="button-icon">ğŸ‘¥</span> Mis pacientes
                     </button>
                     <button
                         className="quick-button"
                         style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 18px', cursor: 'pointer' }}
                         onClick={() => setCurrentView('perfil')}
                     >
-                        <span className="button-icon">??</span> Mi perfil
+                        <span className="button-icon">âš™ï¸</span> Mi perfil
                     </button>
                 </div>
 
